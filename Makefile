@@ -197,8 +197,9 @@ ARCH		?= arm
 #CROSS_COMPILE	?= $(CONFIG_CROSS_COMPILE:"%"=%)
 #CROSS_COMPILE	?= ../prebuilts/gcc/linux-x86/arm/arm-eabi-4.6/bin/arm-eabi-
 #CROSS_COMPILE  ?= /opt/toolchains/arm-eabi-4.6/bin/arm-eabi-
-CROSS_COMPILE  ?= /media/dirk/compile/toolchain/arm-cortex_a9-linux-gnueabihf-linaro_4.7.4-2014.06/bin/arm-cortex_a9-linux-gnueabihf-
+#CROSS_COMPILE  ?= /media/dirk/compile/toolchain/arm-cortex_a9-linux-gnueabihf-linaro_4.7.4-2014.06/bin/arm-cortex_a9-linux-gnueabihf-
 #CROSS_COMPILE	?= /media/dirk/daten/bin/prebuilt/linux-x86/toolchain/arm-eabi-4.4.3/bin/arm-eabi-
+CROSS_COMPILE  ?=/media/dirk/daten/bin/prebuilts/gcc/linux-x86/arm/arm-eabi-4.6/bin/arm-eabi-
 
 # Architecture as present in compile.h
 UTS_MACHINE 	:= $(ARCH)

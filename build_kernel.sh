@@ -1,5 +1,6 @@
 #!/bin/bash
 
+export PATH=/media/dirk/compile/i8200_Kernel:$PATH
 mkdir -p ./kernel_out
 cp -f ./arch/arm/configs/pxa986_golden_rev02_defconfig ./kernel_out/.config
 make -j8 ARCH=arm KBUILD_OUTPUT=./kernel_out oldnoconfig
