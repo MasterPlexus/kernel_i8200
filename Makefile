@@ -2,7 +2,7 @@ VERSION = 3
 PATCHLEVEL = 4
 SUBLEVEL = 5
 EXTRAVERSION =
-NAME = Saber-toothed Squirrel
+NAME = Baroni_level1
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
@@ -198,9 +198,14 @@ ARCH		?= arm
 #CROSS_COMPILE	?= ../prebuilts/gcc/linux-x86/arm/arm-eabi-4.6/bin/arm-eabi-
 #CROSS_COMPILE  ?= /opt/toolchains/arm-eabi-4.6/bin/arm-eabi-
 #CROSS_COMPILE  ?= /media/dirk/compile/toolchain/arm-cortex_a9-linux-gnueabihf-linaro_4.7.4-2014.06/bin/arm-cortex_a9-linux-gnueabihf-
-#CROSS_COMPILE	?= /media/dirk/daten/bin/prebuilt/linux-x86/toolchain/arm-eabi-4.4.3/bin/arm-eabi-
-CROSS_COMPILE  ?=/media/dirk/daten/bin/prebuilts/gcc/linux-x86/arm/arm-eabi-4.6/bin/arm-eabi-
 
+#CROSS_COMPILE	?= /media/dirk/daten/bin/prebuilt/linux-x86/toolchain/arm-eabi-4.4.3/bin/arm-eabi-
+#funktioniert solala
+#CROSS_COMPILE  ?=/media/dirk/daten/bin/prebuilts/gcc/linux-x86/arm/arm-eabi-4.6/bin/arm-eabi-
+#linaro 4.7 (komische fehler am ende des packens)
+#CROSS_COMPILE  ?=/media/dirk/compile/toolchain/android-toolchain-eabi/bin/arm-linux-androideabi-
+#linaro 4.9 
+CROSS_COMPILE  ?=/media/dirk/compile/toolchain/4.9/android-toolchain-eabi/bin/arm-linux-androideabi-
 # Architecture as present in compile.h
 UTS_MACHINE 	:= $(ARCH)
 SRCARCH 	:= $(ARCH)
