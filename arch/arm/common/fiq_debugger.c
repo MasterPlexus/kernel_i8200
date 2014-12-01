@@ -1050,7 +1050,7 @@ int  fiq_tty_write(struct tty_struct *tty, const unsigned char *buf, int count)
 
 int  fiq_tty_write_room(struct tty_struct *tty)
 {
-	return 16;
+	return 1024;
 }
 
 #ifdef CONFIG_CONSOLE_POLL
