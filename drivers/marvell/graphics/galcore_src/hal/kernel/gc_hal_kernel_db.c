@@ -1904,6 +1904,8 @@ gckKERNEL_DestroyProcessDB(
     gcsDATABASE_PTR database;
     gcsDATABASE_RECORD_PTR record, next;
     gctBOOL asynchronous;
+    gceSURF_TYPE type;
+    gcuVIDMEM_NODE_PTR node;
     gctUINT32 i;
     gcmkHEADER_ARG("Kernel=0x%x ProcessID=%d", Kernel, ProcessID);
 
@@ -2016,7 +2018,10 @@ gckKERNEL_DestroyProcessDB(
                 break;
 
             case gcvDB_VIDEO_MEMORY_LOCKED:
-
+                node = (record->data);
+                type = (node->VidMem.memory->object.type == gcvOBJ_VIDMEM)
+                     ? node->VidMem.type
+                     : node->Virtual.type;
                 /* Unlock what we still locked */
                 status = gckVIDMEM_Unlock(record->kernel,
                                           record->data,
@@ -2028,12 +2033,19 @@ gckKERNEL_DestroyProcessDB(
                 if (gcmIS_SUCCESS(status) && (gcvTRUE == asynchronous))
                 {
                     /* TODO: we maybe need to schedule a event here */
+#if 0
                     status = gckVIDMEM_Unlock(record->kernel,
                                               record->data,
                                               ProcessID,
                                               gcvSURF_TYPE_UNKNOWN,
                                               gcvNULL,
                                               gcvTRUE);
+#endif
+                    status = gckEVENT_Unlock(record->kernel->eventObj,
+                                             gcvKERNEL_PIXEL,
+                                             node,
+                                             type);
+
                 }
 
                 gcmkTRACE_ZONE(gcvLEVEL_WARNING, gcvZONE_DATABASE,

@@ -603,6 +603,14 @@ gckOS_WriteRegister(
     IN gctUINT32 Data
     );
 
+gceSTATUS
+gckOS_DirectWriteRegister(
+    IN gckOS Os,
+    IN gceCORE Core,
+    IN gctUINT32 Address,
+    OUT gctUINT32 Data
+    );
+
 /* Write data to a hardware register. */
 gceSTATUS
 gckOS_WriteRegisterEx(
@@ -2008,10 +2016,12 @@ typedef enum _gceKERNEL_FLUSH
     gcvFLUSH_DEPTH              = 0x02,
     gcvFLUSH_TEXTURE            = 0x04,
     gcvFLUSH_2D                 = 0x08,
+    gcvFLUSH_TILE_STATUS        = 0x20,
     gcvFLUSH_ALL                = gcvFLUSH_COLOR
                                 | gcvFLUSH_DEPTH
                                 | gcvFLUSH_TEXTURE
-                                | gcvFLUSH_2D,
+                                | gcvFLUSH_2D
+                                | gcvFLUSH_TILE_STATUS,
 }
 gceKERNEL_FLUSH;
 
@@ -3011,5 +3021,24 @@ gckOS_SignalSetHardware(
 #if gcdENABLE_VG
 #include "gc_hal_vg.h"
 #endif
+
+/* Kickstart the command processor with GPU adddress. */
+gceSTATUS
+gckHARDWARE_ExecutePhysical(
+    IN gckHARDWARE Hardware,
+    IN gctUINT32 Physical,
+    IN gctSIZE_T Bytes
+    );
+
+gceSTATUS
+gckHARDWARE_ConfigMMU(
+    IN gckHARDWARE Hardware,
+    IN gctPOINTER Logical,
+    IN gctPOINTER MtlbLogical,
+    IN gctUINT32 Offset,
+    IN OUT gctSIZE_T * Bytes,
+    OUT gctSIZE_T * WaitLinkOffset,
+    OUT gctSIZE_T * WaitLinkBytes
+    );
 
 #endif /* __gc_hal_h_ */

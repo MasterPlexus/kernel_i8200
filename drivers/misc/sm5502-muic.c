@@ -71,12 +71,12 @@ static BLOCKING_NOTIFIER_HEAD(usb_switch_notifier);
 
 static struct sm5502_usbsw *chip;
 static struct wakeup_source jig_suspend_wake;
+static struct wakeup_source usb_suspend_wake;
 
 extern int jack_is_detected;
 static int jig_wakelock_acq;
 static int probing;
 static int reset_count;
-static int first_acce;
 extern struct class *sec_class;
 
 /**
@@ -414,46 +414,12 @@ static void additional_vbus_int_disable(struct sm5502_usbsw *usbsw)
 	dev_info(&client->dev, "Additiona VBUS Intr Disabled*****\n");
 }
 
-static int sm5502_reg_init(struct sm5502_usbsw *usbsw)
-{
-	struct i2c_client *client = usbsw->client;
-	int i, ret;
-
-	read_reg(client, REG_DEVID, &usbsw->id);
-	for (i = 0; i < ARRAY_SIZE(muic_list); i++) {
-		if (usbsw->id == muic_list[i].id)
-			dev_info(&client->dev, "PartNum : %s\n",
-			       muic_list[i].part_num);
-	}
-
-	/* INT MASK1, 2 */
-	ret = write_reg(client, REG_INT1_MASK, INTMASK1_INIT);
-	if (ret < 0)
-		return ret;
-
-	ret = write_reg(client, REG_INT2_MASK, INTMASK2_INIT);
-	if (ret < 0)
-		return ret;
-
-	/*Set Timing1 to 200ms */
-	ret = write_reg(client, REG_TIMING1, ADC_DET_T200);
-	if (ret < 0)
-		return ret;
-
-	/* CONTROL REG */
-	ret = write_reg(client, REG_CTRL, CTRL_INIT);
-	if (ret < 0)
-		return ret;
-
-	return 0;
-}
-
  /* microUSB switch IC : SM5502 - Silicon Mitus */
-static void detect_dev_sm5502(struct sm5502_usbsw *usbsw, u8 intr1, u8 intr2, void *data)
+static void detect_dev_sm5502(struct sm5502_usbsw *usbsw, u8 intr1, u8 intr2)
 {
 	struct sm5502_platform_data *pdata = usbsw->pdata;
 	struct i2c_client *client = usbsw->client;
-	u8 val1, val2, val3, adc, vbusin, intr1_tmp, val;
+	u8 val1, val2, val3, adc, vbusin;
 	int dev_classifi = 0;
 
 	read_reg(client, REG_DEV_T1, &val1);
@@ -462,27 +428,9 @@ static void detect_dev_sm5502(struct sm5502_usbsw *usbsw, u8 intr1, u8 intr2, vo
 	read_reg(client, REG_ADC, &adc);
 	read_reg(client, REG_RSV_ID1, &vbusin);
 
-	/* IC Bug Case W/A */
-	if ( intr1 & OVP_EVENT_M ) {
-		read_reg(client, REG_CTRL, &val);
-		if ( val == 0x1F ) {
-			sm5502_reg_init(usbsw);
-			return;
-		}
-	}
-	/* Detach -> Attach quickly */
+	/* IC Bug W/A */
 	if (intr1 == (ATTACHED | DETACHED)) {
-		dev_info(&client->dev, "Bug Case 1\n");
-		intr1 &= ~(DETACHED);
-	}
-	/* Attach -> Detach quickly */
-	else if (intr1 & ATTACHED && probing != 1) {
-		read_reg(client, REG_INT1, &intr1_tmp);
-		if (intr1_tmp & DETACHED) {
-			dev_info(&client->dev, "Bug Case 2\n");
-			intr1 &= ~(ATTACHED);
-		}
-		intr1 |= intr1_tmp;
+		intr1 &= ~(ATTACHED);
 	}
 
 	/* Attached */
@@ -490,6 +438,11 @@ static void detect_dev_sm5502(struct sm5502_usbsw *usbsw, u8 intr1, u8 intr2, vo
 		if (val1 & DEV_USB && vbusin & VBUSIN_VALID) {
 			dev_classifi = CABLE_TYPE1_USB_MUIC;
 			dev_info(&client->dev, "USB ATTACHED*****\n");
+
+			__pm_stay_awake(&usb_suspend_wake);
+			pm_qos_update_request(&usbsw->qos_idle,
+					      PM_QOS_CPUIDLE_BLOCK_AXI_VALUE);
+			dev_info(&client->dev, "USB WakeLock *****\n");
 		}
 		if (val1 & DEV_CHARGER && vbusin & VBUSIN_VALID) {
 			dev_classifi = CABLE_TYPE1_TA_MUIC;
@@ -570,8 +523,7 @@ static void detect_dev_sm5502(struct sm5502_usbsw *usbsw, u8 intr1, u8 intr2, vo
 			dev_info(&client->dev, "TA(NON-STANDARD SDP) ATTACHED*****\n");
 		}
 		/* W/A */
-		if (val1 == 0 && val2 == 0 && val3 == 0
-			&& reset_count < MAX_RESET_TRIAL && probing != 1) {
+		if (val1 == 0 && val2 == 0 && val3 == 0 && reset_count < MAX_RESET_TRIAL) {
 
 			u8 sintm1, sintm2, sctrl, stime1, smansw1;
 
@@ -598,8 +550,6 @@ static void detect_dev_sm5502(struct sm5502_usbsw *usbsw, u8 intr1, u8 intr2, vo
 		/* for Charger driver */
 		if (pdata->charger_cb)
 			pdata->charger_cb(dev_classifi);
-		if (probing == 1)
-			*(int *)data = dev_classifi;
 		blocking_notifier_call_chain(&usb_switch_notifier, dev_classifi,
 					     NULL);
 	}
@@ -608,6 +558,10 @@ static void detect_dev_sm5502(struct sm5502_usbsw *usbsw, u8 intr1, u8 intr2, vo
 	if (intr1 & DETACHED) {
 		if (usbsw->dev1 & DEV_USB && usbsw->vbusin & VBUSIN_VALID) {
 			dev_info(&client->dev, "USB DETACHED*****\n");
+			__pm_relax(&usb_suspend_wake);
+			pm_qos_update_request(&usbsw->qos_idle,
+					      PM_QOS_CPUIDLE_BLOCK_DEFAULT_VALUE);
+			dev_info(&client->dev, "USB WakeLock Released *****\n");
 		}
 		if (usbsw->dev1 & DEV_CHARGER && usbsw->vbusin & VBUSIN_VALID) {
 			dev_info(&client->dev, "TA(DCP/CDP) DETACHED*****\n");
@@ -688,12 +642,8 @@ static void detect_dev_sm5502(struct sm5502_usbsw *usbsw, u8 intr1, u8 intr2, vo
 
 void muic_attached_accessory_inquire(void)
 {
-	struct sm5502_usbsw *usbsw = chip;
-	struct i2c_client *client = usbsw->client;
-
-	dev_info(&client->dev, "%s\n", __func__);
-	blocking_notifier_call_chain(&usb_switch_notifier, first_acce,
-					     NULL);
+	//struct sm5502_usbsw *usbsw = chip;
+	printk(KERN_INFO "%s\n", __func__);
 }
 EXPORT_SYMBOL_GPL(muic_attached_accessory_inquire);
 
@@ -715,18 +665,56 @@ static void sm5502_work_cb(struct work_struct *work)
 	read_reg(client, REG_INT1, &intr1);
 	read_reg(client, REG_INT2, &intr2);
 
-	detect_dev_sm5502(usbsw, intr1, intr2, NULL);
+	detect_dev_sm5502(usbsw, intr1, intr2);
 
 	enable_irq(client->irq);
 
 	mutex_unlock(&usbsw->mutex);
 }
 
+static int sm5502_reg_init(struct sm5502_usbsw *usbsw)
+{
+	struct i2c_client *client = usbsw->client;
+	u8 intr1, intr2;
+	int i, ret;
+
+	read_reg(client, REG_DEVID, &usbsw->id);
+	for (i = 0; i < ARRAY_SIZE(muic_list); i++) {
+		if (usbsw->id == muic_list[i].id)
+			dev_info(&client->dev, "PartNum : %s\n",
+			       muic_list[i].part_num);
+	}
+
+	/* Read and Clear INTERRUPT1,2 REGS */
+	read_reg(client, REG_INT1, &intr1);
+	read_reg(client, REG_INT2, &intr2);
+
+	/* INT MASK1, 2 */
+	ret = write_reg(client, REG_INT1_MASK, INTMASK1_INIT);
+	if (ret < 0)
+		return ret;
+
+	ret = write_reg(client, REG_INT2_MASK, INTMASK2_INIT);
+	if (ret < 0)
+		return ret;
+
+	/* CONTROL REG */
+	ret = write_reg(client, REG_CTRL, CTRL_INIT);
+	if (ret < 0)
+		return ret;
+
+	/*Set Timing1 to 200ms */
+	ret = write_reg(client, REG_TIMING1, ADC_DET_T200);
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
 static int sm5502_int_init(struct sm5502_usbsw *usbsw)
 {
 	struct i2c_client *client = usbsw->client;
 	int ret;
-	u8 intr1, intr2, val;
 
 	INIT_WORK(&usbsw->work, sm5502_work_cb);
 
@@ -738,32 +726,10 @@ static int sm5502_int_init(struct sm5502_usbsw *usbsw)
 
 	gpio_direction_input(pxa_irq_to_gpio(client->irq));
 
-	ret = request_irq(client->irq, microusb_irq_handler, IRQF_NO_SUSPEND | IRQF_TRIGGER_FALLING, "sm5502 micro USB", usbsw);
+	ret = request_irq(client->irq, microusb_irq_handler, IRQF_NO_SUSPEND | IRQF_TRIGGER_FALLING, "sm5502 micro USB", usbsw);	/*2. Low level detection */
 	if (ret) {
 		dev_err(&client->dev, "Unable to get IRQ %d\n", client->irq);
 		goto out;
-	}
-
-	/* Read and Clear INTERRUPT1,2 REGS */
-	mutex_lock(&usbsw->mutex);
-	read_reg(client, REG_INT1, &intr1);
-	read_reg(client, REG_INT2, &intr2);
-	mutex_unlock(&usbsw->mutex);
-
-	if ( intr1 & OVP_EVENT_M ) {
-		mutex_lock(&usbsw->mutex);
-		read_reg(client, REG_CTRL, &val);
-		mutex_unlock(&usbsw->mutex);
-		if ( val == 0x1F ) {
-			mutex_lock(&usbsw->mutex);
-			sm5502_reg_init(usbsw);
-			mutex_unlock(&usbsw->mutex);
-			return;
-		}
-	}
-
-	if ((usbsw->dev1 != 0 || usbsw->dev2 != 0 || usbsw->dev3 != 0) && (intr1 == 0 && intr2 == 0)) {
-		dev_err(&client->dev, "Accs inserted but no data on int regs\n");
 	}
 
 	return 0;
@@ -787,6 +753,7 @@ static int __devinit sm5502_probe(struct i2c_client *client,
 
 	/* For AT Command FactoryTest */
 	wakeup_source_init(&jig_suspend_wake, "JIG_UART Connect suspend wake");
+	wakeup_source_init(&usb_suspend_wake, "USB suspend wake");
 
 	usbsw = kzalloc(sizeof(struct sm5502_usbsw), GFP_KERNEL);
 	if (!usbsw) {
@@ -829,21 +796,22 @@ static int __devinit sm5502_probe(struct i2c_client *client,
 		goto sm5502_probe_fail2;
 	}
 
-	usbsw->qos_idle.name = "Jig driver";
-	pm_qos_add_request(&usbsw->qos_idle, PM_QOS_CPUIDLE_BLOCK,
-			   PM_QOS_CPUIDLE_BLOCK_DEFAULT_VALUE);
-
 	ret = sm5502_reg_init(usbsw);
 	if (ret)
 		goto sm5502_probe_fail;
 
-	/* device detection */
-	dev_info(&client->dev, "First Detection\n");
-	detect_dev_sm5502(usbsw, ATTACHED, REV_ACCE, &first_acce);
-
 	ret = sm5502_int_init(usbsw);
 	if (ret)
 		goto sm5502_probe_fail;
+
+
+	usbsw->qos_idle.name = "Jig driver";
+	pm_qos_add_request(&usbsw->qos_idle, PM_QOS_CPUIDLE_BLOCK,
+			   PM_QOS_CPUIDLE_BLOCK_DEFAULT_VALUE);
+
+	/* device detection */
+	dev_info(&client->dev, "First Detection\n");
+	detect_dev_sm5502(usbsw, ATTACHED, REV_ACCE);
 
 	probing = 0;
 	dev_info(&client->dev, "PROBE Done.\n");

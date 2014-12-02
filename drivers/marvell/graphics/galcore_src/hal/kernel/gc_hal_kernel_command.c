@@ -24,6 +24,7 @@
 
 #include "gc_hal_kernel_precomp.h"
 #include "gc_hal_kernel_context.h"
+#include <linux/kernel.h>
 
 #ifdef __QNXNTO__
 #include <sys/slog.h>
@@ -324,7 +325,7 @@ OnError:
     return status;
 }
 #endif
-
+#if !gcdFLUSH_FIX
 static gceSTATUS
 _FlushMMU(
     IN gckCOMMAND Command
@@ -349,7 +350,7 @@ _FlushMMU(
 OnError:
     return status;
 }
-
+#endif
 /******************************************************************************\
 ****************************** gckCOMMAND API Code ******************************
 \******************************************************************************/
@@ -469,6 +470,11 @@ gckCOMMAND_Construct(
 
     /* END event signal not created. */
     command->endEventSignal = gcvNULL;
+
+    command->queue.front = 0;
+    command->queue.rear = 0;
+    command->queue.count = 0;
+    command->queue.init = gcvFALSE;
 
     /* Return pointer to the gckCOMMAND object. */
     *Command = command;
@@ -1048,13 +1054,22 @@ gckCOMMAND_Commit(
     gctSIZE_T exitBytes;
     gctPHYS_ADDR waitLinkPhysical;
     gctPOINTER waitLinkLogical;
-    gctPOINTER waitLinkLogicalBase;
-    gctPHYS_ADDR waitLinkMdlHandle;
+    gctPOINTER waitLinkLogicalBase = gcvNULL;
+    gctPHYS_ADDR waitLinkMdlHandle = gcvNULL;
     gctSIZE_T waitLinkBytes;
     gctPHYS_ADDR waitPhysical;
     gctPOINTER waitLogical;
     gctUINT32 waitOffset;
     gctSIZE_T waitSize;
+
+#if gcdFLUSH_FIX
+    gctSIZE_T mmuConfigureBytes;
+    gctPOINTER mmuConfigureLogical = gcvNULL;
+    gctPOINTER mmuConfigurePhysical = 0;
+    gctSIZE_T mmuConfigureWaitLinkOffset;
+    gctSIZE_T reservedBytes;
+    gctUINT32 oldValue = 0;
+#endif
 
 #if gcdDUMP_COMMAND
     gctPOINTER contextDumpLogical = gcvNULL;
@@ -1080,11 +1095,20 @@ gckCOMMAND_Commit(
         Context = gcvNULL;
     }
 
+#if !gcdFLUSH_FIX
     gcmkONERROR(_FlushMMU(Command));
+#endif
 
     /* Acquire the command queue. */
     gcmkONERROR(gckCOMMAND_EnterCommit(Command, gcvFALSE));
     commitEntered = gcvTRUE;
+
+#if gcdFLUSH_FIX
+    gckOS_AtomGet(Command->os,
+                  Command->kernel->hardware->pageTableDirty,
+                  &oldValue
+                  );
+#endif
 
     /* Acquire the context switching mutex. */
     gcmkONERROR(gckOS_AcquireMutex(
@@ -1177,6 +1201,50 @@ gckCOMMAND_Commit(
     /* Compute number of bytes left in current kernel command queue. */
     bytes = Command->pageSize - offset;
 
+#if gcdFLUSH_FIX
+    if (oldValue)
+    {
+        /* Query the size of PAGE TABLE SWITCH command sequence. */
+        gcmkONERROR(gckHARDWARE_ConfigMMU(
+            hardware,
+            gcvNULL,
+            gcvNULL,
+            offset,
+            &mmuConfigureBytes,
+            &mmuConfigureWaitLinkOffset,
+            &waitLinkBytes
+            ));
+
+        /* Is there enough space in the current command queue? */
+        if (bytes < mmuConfigureBytes)
+        {
+            /* No, create a new one. */
+            gcmkONERROR(_NewQueue(Command));
+
+            /* Get the new current offset. */
+            offset = Command->offset;
+
+            /* Recompute the number of bytes in the new kernel command queue. */
+            bytes = Command->pageSize - offset;
+            gcmkASSERT(bytes >= mmuConfigureBytes);
+        }
+
+        mmuConfigurePhysical = (gctUINT8_PTR) Command->physical + offset;
+        mmuConfigureLogical  = (gctUINT8_PTR) Command->logical  + offset;
+
+        /* Compute the location if WAIT/LINK command sequence. */
+        waitLinkPhysical = (gctUINT8_PTR) mmuConfigurePhysical + mmuConfigureWaitLinkOffset;
+        waitLinkLogical  = (gctUINT8_PTR) mmuConfigureLogical  + mmuConfigureWaitLinkOffset;
+
+        waitLinkLogicalBase = (gctUINT8_PTR) Command->logical;
+        waitLinkMdlHandle   =  Command->queues[Command->index].physical;
+
+        reservedBytes = mmuConfigureBytes;
+    }
+    else
+#endif
+    {
+
     /* Query the size of WAIT/LINK command sequence. */
     gcmkONERROR(gckHARDWARE_WaitLink(
         hardware,
@@ -1208,6 +1276,11 @@ gckCOMMAND_Commit(
     waitLinkLogical  = (gctUINT8_PTR) Command->logical  + offset;
     waitLinkLogicalBase = (gctUINT8_PTR) Command->logical;
     waitLinkMdlHandle   =  Command->queues[Command->index].physical;
+
+#if gcdFLUSH_FIX
+    reservedBytes = waitLinkBytes;
+#endif
+	}
 
     /* Context switch required? */
     if (Context == gcvNULL)
@@ -1833,10 +1906,16 @@ gckCOMMAND_Commit(
 #if gcdNONPAGED_MEMORY_CACHEABLE
         exitPhysical = Command->physical;
 #endif
+
+#if gcdFLUSH_FIX
+        exitLogical  = waitLinkLogical;
+        exitBytes    = waitLinkBytes;
+#else
         exitLogical  = Command->logical;
+        exitBytes    = Command->offset + waitLinkBytes;
+#endif
         exitLogicalBase = Command->logical;
         exitMdlHandle   = Command->queues[Command->index].physical;
-        exitBytes       = Command->offset + waitLinkBytes;
     }
     else
     {
@@ -1908,6 +1987,62 @@ gckCOMMAND_Commit(
         commandBufferSize
         ));
 #endif
+
+#if gcdFLUSH_FIX
+    if (oldValue)
+    {
+        gctUINT32 targetPhysical;
+
+        /* Fill MMU configuration command seqeunce. */
+        gcmkONERROR(gckHARDWARE_ConfigMMU(
+            hardware,
+            mmuConfigureLogical,
+            Command->kernel->mmu->mtlbLogical,
+            offset,
+            gcvNULL,
+            gcvNULL,
+            gcvNULL
+            ));
+
+        if(entryLogical >= entryLogicalBase)
+        {
+            gcmkONERROR(
+                gckHARDWARE_ConvertLogicalMdl(hardware, entryLogicalBase, &targetPhysical, entryMdlHandle));
+            targetPhysical= targetPhysical + ((gctUINT32)entryLogical - (gctUINT32)entryLogicalBase);
+        }
+        else
+        {
+            gcmkONERROR(gcvSTATUS_INVALID_ARGUMENT);
+        }
+
+        gckENTRYQUEUE_Enqueue(Command->kernel->eventObj,
+                             &Command->queue,
+                             targetPhysical,
+                             entryBytes);
+
+        gckOS_AtomGet(Command->os,
+                      Command->kernel->hardware->IsrClkoff,
+                      &oldValue
+                      );
+        if(!oldValue)
+        {
+            printk("ERR POWER OFF ~~ but COMMANDCommit BIG ERR \n");
+        }
+
+        gcmkONERROR(gckOS_AtomicExchange(Command->os,
+                                         Command->kernel->hardware->pageTableDirty,
+                                         0,
+                                         &oldValue));
+
+        /* Update entryLogical. */
+        entryLogical = mmuConfigureLogical;
+        entryLogicalBase = Command->logical;
+        entryMdlHandle   = Command->queues[Command->index].physical;
+        /* Update entryBytes. */
+        entryBytes = mmuConfigureBytes;
+    }
+#endif
+
     /* Generate a LINK from the previous WAIT/LINK command sequence to the
        entry determined above (either the context or the command buffer).
        This LINK replaces the WAIT instruction from the previous WAIT/LINK
@@ -1970,7 +2105,11 @@ gckCOMMAND_Commit(
     Command->pipeSelect = commandBufferObject->exitPipe;
 
     /* Update command queue offset. */
+#if gcdFLUSH_FIX
+    Command->offset  += reservedBytes;
+#else
     Command->offset  += waitLinkBytes;
+#endif
     Command->newQueue = gcvFALSE;
 
     /* Update address of last WAIT. */

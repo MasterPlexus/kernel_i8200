@@ -2565,6 +2565,59 @@ gckOS_WriteRegister(
 {
     return gckOS_WriteRegisterEx(Os, gcvCORE_MAJOR, Address, Data);
 }
+gceSTATUS
+gckOS_DirectWriteRegister(
+    IN gckOS Os,
+    IN gceCORE Core,
+    IN gctUINT32 Address,
+    OUT gctUINT32 Data
+    )
+{
+    gckKERNEL         kernel;
+    gcmkHEADER_ARG("Os=0x%X Core=%d Address=0x%X Data=0x%08x", Os, Core, Address, Data);
+
+    gcmkVERIFY_OBJECT(Os, gcvOBJ_OS);
+
+    kernel = Os->device->kernels[Core];
+
+    if(kernel && kernel->hardware)
+    {
+        /* make sure both external and internal clock are ON.
+            Exceptions:
+            * REG[ AQHiClockControlRegAddrs ]
+        */
+        if (Address == 0x0000 ||
+            (Os->clockDepth != 0 && kernel->hardware->clk2D3D_Enable == gcvTRUE)
+           )
+        {
+            writel(Data, (gctUINT8 *)Os->device->registerBases[Core] + Address);
+
+            /* read out AQ_HI_CLOCK_CONTROL register, update clk2D3D_Enable to *TRUE*
+                if and only if the last two bits, a.k.a. CLK2D_DIS and CLK3D_DIS are
+                equal to *ZERO*
+            */
+            if(Address == 0x0000)
+            {
+                gctUINT32 value;
+                value = readl((gctUINT8 *)Os->device->registerBases[Core] + Address);
+                kernel->hardware->clk2D3D_Enable = ((value & 0x03) == 0x0);
+            }
+        }
+        else
+        {
+            gcmkPRINT("GPU%d_REG[%#x](%d, %d)writ(0x%08x) err!",
+                Core, Address, Os->clockDepth, kernel->hardware->clk2D3D_Enable, Data);
+        }
+    }
+    else
+    {
+        writel(Data, (gctUINT8 *)Os->device->registerBases[Core] + Address);
+    }
+
+    /* Success. */
+    gcmkFOOTER_NO();
+    return gcvSTATUS_OK;
+}
 
 gceSTATUS
 gckOS_WriteRegisterEx(

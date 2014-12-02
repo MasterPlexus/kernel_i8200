@@ -1233,7 +1233,7 @@
 
 #define _OPENVG_VERSION_STRING_                 "OpenVG 1.1"
 
-#define _GC_VERSION_STRING_                     "GC Ver SS_rls_pxa988_JB42_R1_RC2_GC13.10"
+#define _GC_VERSION_STRING_                     "GC Ver SS_rls_pxa988_JB42_R1_RC2_GC13.14"
 
 #ifndef gcdSYNC
 #   define gcdSYNC                              1
@@ -1249,5 +1249,9 @@
 #   define gcdDVFS                               0
 #   define gcdDVFS_ANAYLSE_WINDOW                4
 #   define gcdDVFS_POLLING_TIME                  (gcdDVFS_ANAYLSE_WINDOW * 4)
+#endif
+
+#ifndef gcdFLUSH_FIX
+#   define gcdFLUSH_FIX                         1
 #endif
 #endif /* __gc_hal_options_h_ */

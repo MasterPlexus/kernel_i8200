@@ -59,6 +59,7 @@ struct usim_event_device {
 	struct device *dev;
 
 	int enable;
+	int state;
 
 	int mfp;
 	int gpio;
@@ -100,7 +101,10 @@ static void usim_event_work(struct work_struct *work)
 	    container_of(to_delayed_work(work), struct usim_event_device, work);
 	int state = !!gpio_get_value(uedev->gpio);
 
+	if (state != uedev->state) {
+		uedev->state = state;
 	report_usim_event(uedev, state);
+	}
 }
 
 static void usim_event_wakeup(int mfp, void *data)
@@ -175,8 +179,7 @@ static ssize_t usim_show_state(struct device *dev,
 	    (struct usim_event_device *)dev_get_drvdata(dev);
 
 	int len;
-	int state = !!gpio_get_value(uedev->gpio);
-	len = sprintf(buf, "%d\n", state);
+	len = sprintf(buf, "%d\n", uedev->state);
 	return len;
 }
 
@@ -249,6 +252,7 @@ static int init_device(struct usim_event_device *uedev, int idx)
 	snprintf(uedev->name, sizeof(uedev->name) - 1, "usim%d", idx);
 	spin_lock_init(&uedev->lock);
 
+	uedev->state = !!gpio_get_value(uedev->gpio);
 	uedev->desc.mfp = uedev->mfp;
 	uedev->desc.gpio = mfp_to_gpio(uedev->gpio);
 	uedev->desc.type = MFP_LPM_EDGE_BOTH;

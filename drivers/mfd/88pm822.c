@@ -398,6 +398,9 @@ static ssize_t pm822_proc_read(char *buf, char **start, off_t off,
 		case 2:
 			regmap_read(chip->subchip->regmap_gpadc, reg_pm822, &reg_val);
 			break;
+		case 7:
+			regmap_read(chip->subchip->regmap_test, reg_pm822, &reg_val);
+			break;
 		default:
 			pr_err("pg_index error!\n");
 			return 0;
@@ -464,6 +467,9 @@ static ssize_t pm822_proc_write(struct file *filp,
 			break;
 		case 2:
 			regmap_write(chip->subchip->regmap_gpadc, reg_pm822, reg_val & 0xff);
+			break;
+		case 7:
+			regmap_write(chip->subchip->regmap_test, reg_pm822, reg_val & 0xff); 
 			break;
 		default:
 			pr_err("pg_index error!\n");
@@ -793,6 +799,18 @@ static int pm822_pages_init(struct pm822_chip *chip)
 		dev_info(chip->dev,
 			 "PM822: No gpadc_page_addr\n");
 
+	/* PM822 block TEST: i2c addr 0x37 */
+	if (subchip->test_page_addr) {
+		subchip->test_page = i2c_new_dummy(client->adapter,
+											subchip->test_page_addr);
+		subchip->regmap_test = 
+			devm_regmap_init_i2c(subchip->test_page,
+								&pm822_regmap_config);
+		i2c_set_clientdata(subchip->test_page, chip);
+	} else
+		dev_info(chip->dev,
+					"PM822 block GPADC 0x37: No test_page_addr\n");
+
 	return 0;
 }
 
@@ -807,6 +825,10 @@ static void pm822_pages_exit(struct pm822_chip *chip)
 	if (subchip->gpadc_page) {
 		regmap_exit(subchip->regmap_gpadc);
 		i2c_unregister_device(subchip->gpadc_page);
+	}
+	if (subchip->test_page) {
+		regmap_exit(subchip->regmap_test);
+		i2c_unregister_device(subchip->test_page);
 	}
 	i2c_unregister_device(chip->i2c);
 }
@@ -992,7 +1014,7 @@ out:
 static int __devinit pm822_probe(struct i2c_client *client,
 				 const struct i2c_device_id *id)
 {
-	int ret = 0;
+	int ret = 0, offset;
 	struct pm822_chip *chip;
 	struct regmap *map;
 	struct pm822_subchip *subchip;
@@ -1034,6 +1056,7 @@ static int __devinit pm822_probe(struct i2c_client *client,
 
 	subchip->power_page_addr = pdata->power_page_addr;
 	subchip->gpadc_page_addr = pdata->gpadc_page_addr;
+	subchip->test_page_addr = pdata->test_page_addr;
 	chip->subchip = subchip;
 
 	ret = pm822_pages_init(chip);
@@ -1053,6 +1076,12 @@ static int __devinit pm822_probe(struct i2c_client *client,
 
 	if (!g_pm822_chip)
 		g_pm822_chip = chip;
+
+	/* copy offset1 in offset2 */
+	regmap_write(chip->regmap, 0x1f, 0x1);
+	regmap_read(chip->subchip->regmap_test, 0x74, &offset);
+	regmap_write(chip->subchip->regmap_test, 0x7d, offset);
+	regmap_write(chip->regmap, 0x1f, 0x0);
 
 	return 0;
 

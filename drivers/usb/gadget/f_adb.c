@@ -424,9 +424,8 @@ static int adb_open(struct inode *ip, struct file *fp)
 
 	/* clear the error latch */
 	_adb_dev->error = 0;
-	
-	if (system_state == SYSTEM_BOOTING || system_state == SYSTEM_RUNNING)
-		adb_ready_callback();
+
+	adb_ready_callback();
 
 	return 0;
 }

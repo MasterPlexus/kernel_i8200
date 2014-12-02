@@ -75,7 +75,6 @@ typedef struct _LINUX_MDL
 }
 LINUX_MDL, *PLINUX_MDL;
 
-
 typedef struct _DRIVER_ARGS
 {
     gctPOINTER              InputBuffer;
@@ -85,6 +84,7 @@ typedef struct _DRIVER_ARGS
 }
 DRIVER_ARGS;
 
+/* Find MdlMap for current process. */
 gceSTATUS
 gckOS_FindMdlMap(
     IN gckOS Os,

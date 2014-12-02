@@ -428,7 +428,7 @@ chardev_open(struct inode *inode, struct file *filp)
 		LEAVE();
 		return -ENXIO;
 	}
-
+	
 	if (!chardev_get(dev)) {
 		LEAVE();
 		return -ENXIO;
@@ -561,14 +561,11 @@ register_char_dev(struct char_dev *dev, struct class *char_class,
 		/* Store the allocated dev major # */
 		mbtchar_major = MAJOR(dev_num);
 	}
-//	cdev_init(&dev->cdev, &chardev_fops);
-//	dev->cdev.owner = chardev_fops.owner;
 	dev->cdev = cdev_alloc();
 	dev->cdev->ops = &chardev_fops;
 	dev->cdev->owner = chardev_fops.owner;
 	dev_num = MKDEV(mbtchar_major, dev->minor);
 
-//	if (cdev_add(&dev->cdev, dev_num, 1)) {
 	if (cdev_add(dev->cdev, dev_num, 1)) {
 		PRINTM(ERROR, "chardev: cdev_add failed\n");
 		ret = -EFAULT;
@@ -639,7 +636,6 @@ unregister_char_dev(struct char_dev *dev, struct class *char_class,
 {
 	ENTER();
 	device_destroy(char_class, MKDEV(mbtchar_major, dev->minor));
-	//cdev_del(&dev->cdev);
 	cdev_del(dev->cdev);
 	unregister_chrdev_region(MKDEV(mbtchar_major, dev->minor), 1);
 	PRINTM(INFO, "unregister char dev=%s\n", dev_name);

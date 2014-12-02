@@ -1226,7 +1226,10 @@ static void read_soc(struct sec_fg_info *info)
 	}
 
 	info->bat_params.cap = cap;
-	is_boot--;
+
+	if (is_boot > 0)
+		is_boot--;
+
 	//pr_info("%s, count_cap_after: %d \n", __func__, count_cap);
 	//pr_info("%s, Android soc: %d \n", __func__, *soc); //to uncomment if SSG setup is not used
 }

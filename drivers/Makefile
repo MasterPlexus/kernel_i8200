@@ -139,7 +139,4 @@ obj-$(CONFIG_PM_DEVFREQ)	+= devfreq/
 obj-y				+= marvell/
 
 obj-$(CONFIG_SENSOR_DIR)	+= sensor/
-
-ifeq (1, $(shell if [ -d ../../../../../../kernel/drivers/exfat ] ; then echo 1 ; fi))
 obj-y                           += exfat/
-endif

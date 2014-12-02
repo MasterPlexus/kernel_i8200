@@ -1034,6 +1034,7 @@ gckKERNEL_Dispatch(
 #if !USE_NEW_LINUX_SIGNAL
     gctSIGNAL   signal;
 #endif
+    gceSURF_TYPE type;
 
     gcsDATABASE_RECORD record;
     gctPOINTER    data;
@@ -1238,6 +1239,8 @@ gckKERNEL_Dispatch(
         break;
 
     case gcvHAL_ALLOCATE_LINEAR_VIDEO_MEMORY:
+
+        type = Interface->u.AllocateLinearVideoMemory.type;
         /* Allocate memory. */
         gcmkONERROR(
             _AllocateMemory(Kernel,
@@ -1252,6 +1255,7 @@ gckKERNEL_Dispatch(
         if (node->VidMem.memory->object.type == gcvOBJ_VIDMEM)
         {
             bytes = node->VidMem.bytes;
+            node->VidMem.type = type;
             gckOS_Sprintf(node->VidMem.funcName,
                    Interface->u.AllocateLinearVideoMemory.funcName);
             node->VidMem.line = Interface->u.AllocateLinearVideoMemory.line;
@@ -1262,6 +1266,7 @@ gckKERNEL_Dispatch(
             Interface->u.AllocateLinearVideoMemory.physical = node->Virtual.physical;
 
             bytes = node->Virtual.bytes;
+            node->Virtual.type = type;
             gckOS_Sprintf(node->Virtual.funcName,
                    Interface->u.AllocateLinearVideoMemory.funcName);
             node->Virtual.line = Interface->u.AllocateLinearVideoMemory.line;
@@ -1277,6 +1282,16 @@ gckKERNEL_Dispatch(
 
     case gcvHAL_FREE_VIDEO_MEMORY:
         /*check it in database firstly*/
+        node = Interface->u.FreeVideoMemory.node;
+
+        if (node->VidMem.memory->object.type == gcvOBJ_VIDMEM)
+        {
+            type = node->VidMem.type;
+        }
+        else
+        {
+            type = node->Virtual.type;
+        }
         gcmkONERROR(
             gckKERNEL_RemoveProcessDB(Kernel,
                                       processID, gcvDB_VIDEO_MEMORY,
@@ -3396,6 +3411,74 @@ gckLINKQUEUE_GetData(
     gcmkASSERT(Index >= 0 && Index < gcdLINK_QUEUE_SIZE);
 
     *Data = &LinkQueue->data[(Index + LinkQueue->front) % gcdLINK_QUEUE_SIZE];
+}
+#endif
+
+#if gcdFLUSH_FIX
+void
+gckENTRYQUEUE_Dequeue(
+    IN gckEVENT Event,
+    IN gckENTRYQUEUE Queue
+    )
+{
+
+    gckOS_Spinlock(Event->os, Event->entryQLock, gcvSPINLOCK_IRQSAVE);
+    Queue->count--;
+    gckOS_Spinunlock(Event->os, Event->entryQLock, gcvSPINLOCK_IRQSAVE);
+    Queue->front = (Queue->front + 1) % gcdENTRY_QUEUE_SIZE;
+}
+
+gctUINT32
+gckENTRYQUEUE_Qurey(
+    IN gckEVENT Event,
+    IN gckENTRYQUEUE Queue
+    )
+{
+    if(Queue->init)
+    {
+        gctUINT32                   count;
+
+        gckOS_Spinlock(Event->os, Event->entryQLock, gcvSPINLOCK_IRQSAVE);
+        count  = Queue->count;
+        gckOS_Spinunlock(Event->os, Event->entryQLock, gcvSPINLOCK_IRQSAVE);
+        return count;
+    }
+    else
+        return 0;
+}
+
+void
+gckENTRYQUEUE_Enqueue(
+    IN gckEVENT Event,
+    IN gckENTRYQUEUE Queue,
+    IN gctUINT32 physical,
+    IN gctUINT32 bytes
+    )
+{
+    static gctUINT32 firstcheck = 0;
+    if(!firstcheck)
+    {
+        firstcheck = 1;
+        Queue->init = gcvTRUE;
+    }
+
+    gckOS_Spinlock(Event->os, Event->entryQLock, gcvSPINLOCK_IRQSAVE);
+    Queue->count++;
+    gckOS_Spinunlock(Event->os, Event->entryQLock, gcvSPINLOCK_IRQSAVE);
+
+    Queue->data[Queue->rear].physical = physical;
+    Queue->data[Queue->rear].bytes = bytes;
+    Queue->rear = (Queue->rear + 1) % gcdENTRY_QUEUE_SIZE;
+}
+
+void
+gckENTRYQUEUE_GetData(
+    IN gckENTRYQUEUE Queue,
+    IN gctUINT32 Index,
+    OUT gckENTRYDATA * Data
+    )
+{
+    *Data = &Queue->data[(Index + Queue->front) % gcdENTRY_QUEUE_SIZE];
 }
 #endif
 

@@ -16,6 +16,7 @@
 *    along with this program; if not write to the Free Software
 *    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 *
+*
 *****************************************************************************/
 
 
@@ -28,6 +29,7 @@
 
 #ifdef __cplusplus
 extern "C" {
+
 #endif
 
 /* Maps state locations within the context buffer. */
@@ -49,6 +51,7 @@ typedef struct _gcsCONTEXT
     /* For debugging: the number of context buffer in the order of creation. */
 #if gcmIS_DEBUG(gcdDEBUG_CODE)
     gctUINT                     num;
+
 #endif
 
     /* Pointer to gckEVENT object. */
@@ -135,11 +138,14 @@ struct _gckCONTEXT
     /* Hint array. */
 #if gcdSECURE_USER
     gctBOOL_PTR                 hint;
+
 #endif
 };
 
 #ifdef __cplusplus
 }
+
 #endif
+
 
 #endif /* __gc_hal_kernel_context_h_ */

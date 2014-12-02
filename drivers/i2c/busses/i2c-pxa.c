@@ -551,7 +551,11 @@ static void i2c_pxa_set_slave(struct pxa_i2c *i2c, int errcode)
 	}
 }
 #else
-#define i2c_pxa_set_slave(i2c, err)	do { } while (0)
+static void i2c_pxa_set_slave(struct pxa_i2c *i2c, int errcode)
+{
+	writel(readl(_ICR(i2c)) & ~ICR_IUE, _ICR(i2c));
+	return;
+}
 #endif
 
 static void flush_fifo_registers(struct pxa_i2c *i2c)
@@ -1162,7 +1166,9 @@ static int i2c_pxa_pio_xfer(struct i2c_adapter *adap,
 	struct pxa_i2c *i2c = adap->algo_data;
 	int ret, i;
 	pr_info("--> %s is called to r/w i2c reg\n", __func__);
-
+#ifndef CONFIG_I2C_PXA_SLAVE
+	writel(readl(_ICR(i2c)) | ICR_IUE, _ICR(i2c));
+#endif
 	/* If the I2C controller is disabled we need to reset it
 	  (probably due to a suspend/resume destroying state). We do
 	  this here as we can then avoid worrying about resuming the
@@ -1481,12 +1487,13 @@ static irqreturn_t i2c_pxa_handler(int this_irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-
 static int i2c_pxa_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 {
 	struct pxa_i2c *i2c = adap->algo_data;
 	int ret, i;
-
+#ifndef CONFIG_I2C_PXA_SLAVE
+	writel(readl(_ICR(i2c)) | ICR_IUE, _ICR(i2c));
+#endif
 	enable_irq(i2c->irq);
 	for (i = adap->retries; i >= 0; i--) {
 		if (i2c->fifo_mode)

@@ -478,10 +478,13 @@ struct pm822_usb_pdata {
 struct pm822_subchip {
 	struct i2c_client *power_page;	/* chip client for power page */
 	struct i2c_client *gpadc_page;	/* chip client for gpadc page */
+	struct i2c_client *test_page;	/* chip client for test page */
 	struct regmap *regmap_power;
 	struct regmap *regmap_gpadc;
+	struct regmap *regmap_test;
 	unsigned short power_page_addr;	/* power page I2C address */
 	unsigned short gpadc_page_addr;	/* gpadc page I2C address */
+	unsigned short test_page_addr;	/* test page I2C address */
 };
 
 struct pm822_chip {
@@ -526,6 +529,7 @@ struct pm822_platform_data {
 	int irq_mode;		/* Clear interrupt by read/write(0/1) */
 	unsigned short power_page_addr;	/* power page I2C address */
 	unsigned short gpadc_page_addr;	/* gpadc page I2C address */
+	unsigned short test_page_addr;	/* test page I2C address */
 	int num_regulators;
 	int (*plat_config)(struct pm822_chip *chip,
 				struct pm822_platform_data *pdata);

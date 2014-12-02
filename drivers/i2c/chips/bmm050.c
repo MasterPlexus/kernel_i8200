@@ -523,8 +523,13 @@ BMM050_RETURN_FUNCTION_TYPE bmm050_perform_advanced_selftest(
 		/* set sleep mode to prepare for forced measurement.
 		 * If sensor is off, this will turn it on
 		 * and respect needed delays. */
+ 		p_bmm050->delay_msec(100);
+		comres = bmm050_set_functional_state(BMM050_SUSPEND_MODE);
 
+		p_bmm050->delay_msec(20);
 		comres = bmm050_set_functional_state(BMM050_SLEEP_MODE);
+
+		p_bmm050->delay_msec(20);
 
 		/* set normal accuracy mode */
 		comres |= bmm050_set_repetitions_Z(BMM050_LOWPOWER_REPZ);
@@ -1136,7 +1141,7 @@ BMM050_RETURN_FUNCTION_TYPE bmm050_get_raw_xyz(struct bmm050_mdata *mdata)
 	if (p_bmm050 == BMM050_NULL) {
 		comres = E_BMM050_NULL_PTR;
 	} else {
-
+		p_bmm050->delay_msec(10);
 		comres = p_bmm050->BMM050_BUS_READ_FUNC(p_bmm050->dev_addr,
 				BMM050_DATAX_LSB, a_data_u8r, 6);
 

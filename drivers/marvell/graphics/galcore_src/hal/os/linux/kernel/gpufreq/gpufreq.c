@@ -1326,10 +1326,10 @@ int gpufreq_frequency_table_target(struct gpufreq_policy *policy,
             continue;
 
 #if 0
-	 /*
-		 remove this quick path if qos is enabled with such case:
-			 qos_max < policy->min
-	 */
+        /*
+            remove this quick path if qos is enabled with such case:
+                qos_max < policy->min
+        */
         if(freq < policy->min || freq > policy->max)
             continue;
 #endif

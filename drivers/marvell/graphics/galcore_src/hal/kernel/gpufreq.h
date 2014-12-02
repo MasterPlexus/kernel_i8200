@@ -252,10 +252,10 @@ struct _gc_qos {
         policy = gpufreq_policy_get(gpu);                                      \
         if(!policy)                                                            \
             return NOTIFY_BAD;                                                 \
-									       \
-	/* FIXME: bail out min_qos request with min freq */		       \
-	if(val == policy->gpuinfo.min_freq && RELATION == GPUFREQ_RELATION_L)  \
-	    return NOTIFY_BAD;						       \
+                                                                               \
+        /* FIXME: bail out min_qos request with min freq. */                   \
+        if(val == policy->gpuinfo.min_freq && RELATION == GPUFREQ_RELATION_L) \
+           return NOTIFY_BAD;                                                  \
                                                                                \
         ret = __gpufreq_driver_target(policy, val, RELATION);                  \
         gpufreq_policy_put(policy);                                            \

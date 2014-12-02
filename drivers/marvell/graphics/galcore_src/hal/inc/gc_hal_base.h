@@ -153,6 +153,7 @@ typedef struct _gcsPLS
 
     gctBOOL                     bDungeonDefenders;
     gctBOOL                     bBypassMode;
+    gctBOOL                     bBrowser;
 }
 gcsPLS;
 

@@ -880,6 +880,7 @@ static long  mtpg_ioctl(struct file *fd, unsigned int code, unsigned long arg)
 	char buf[USB_PTPREQUEST_GETSTATUS_SIZE+1] = {0};
 
 	cdev = dev->cdev;
+
 	if(dev->online == 0 || dev->error == 1) {
 	    printk(KERN_ERR "ioctl is calling when device is disable or not online\n");
 		return -EAGAIN;
@@ -1206,12 +1207,11 @@ mtpg_function_unbind(struct usb_configuration *c, struct usb_function *f)
 	struct usb_request *req;
 
 	printk(KERN_DEBUG "[%s]\tline = [%d]\n", __func__, __LINE__);
+	while ((req = mtpg_req_get(dev, &dev->tx_idle)))
+		mtpg_request_free(req, dev->bulk_in);
 
 	while ((req = mtpg_req_get(dev, &dev->rx_idle)))
 		mtpg_request_free(req, dev->bulk_out);
-
-	while ((req = mtpg_req_get(dev, &dev->tx_idle)))
-		mtpg_request_free(req, dev->bulk_in);
 
 	while ((req = mtpg_req_get(dev, &dev->intr_idle)))
 		mtpg_request_free(req, dev->int_in);
@@ -1328,14 +1328,20 @@ static int mtpg_function_set_alt(struct usb_function *f,
 	if (dev->int_in->driver_data)
 		usb_ep_disable(dev->int_in);
 
+#if !defined(CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE)
+	ret = usb_ep_enable(dev->int_in,
+			ep_choose(cdev->gadget, &int_hs_notify_desc,
+						&int_fs_notify_desc));
+#else
 	ret = config_ep_by_speed(cdev->gadget, f, dev->int_in);
 	if (ret) {
 		dev->int_in->desc = NULL;
 		pr_err("%s: config_ep_by_speed failed for ep#, err#%d\n",
 				__func__,  ret);
 		return ret;
-	}
+	}	
 	ret = usb_ep_enable(dev->int_in);
+#endif
 	if (ret) {
 		usb_ep_disable(dev->int_in);
 		dev->int_in->driver_data = NULL;
@@ -1346,15 +1352,20 @@ static int mtpg_function_set_alt(struct usb_function *f,
 
 	if (dev->bulk_in->driver_data)
 		usb_ep_disable(dev->bulk_in);
-
+#if !defined(CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE)
+	ret = usb_ep_enable(dev->bulk_in,
+			ep_choose(cdev->gadget, &hs_mtpg_in_desc,
+						&fs_mtpg_in_desc));
+#else
 	ret = config_ep_by_speed(cdev->gadget, f, dev->bulk_in);
 	if (ret) {
 		dev->bulk_in->desc = NULL;
 		pr_err("%s: config_ep_by_speed failed for ep#, err#%d\n",
 				__func__,  ret);
 		return ret;
-	}
+	}	
 	ret = usb_ep_enable(dev->bulk_in);
+#endif
 	if (ret) {
 		usb_ep_disable(dev->bulk_in);
 		dev->bulk_in->driver_data = NULL;
@@ -1367,14 +1378,20 @@ static int mtpg_function_set_alt(struct usb_function *f,
 	if (dev->bulk_out->driver_data)
 		usb_ep_disable(dev->bulk_out);
 
+#if !defined(CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE)
+	ret = usb_ep_enable(dev->bulk_out,
+			ep_choose(cdev->gadget, &hs_mtpg_out_desc,
+						&fs_mtpg_out_desc));
+#else
 	ret = config_ep_by_speed(cdev->gadget, f, dev->bulk_out);
 	if (ret) {
 		dev->bulk_out->desc  = NULL;
 		pr_err("%s: config_ep_by_speed failed for ep#, err#%d\n",
 				__func__,  ret);
 		return ret;
-	}
+	}	
 	ret = usb_ep_enable(dev->bulk_out);
+#endif
 	if (ret) {
 		usb_ep_disable(dev->bulk_out);
 		dev->bulk_out->driver_data = NULL;
@@ -1402,8 +1419,6 @@ static void mtpg_function_disable(struct usb_function *f)
 	printk(KERN_DEBUG "[%s]\tline = [%d]\n", __func__, __LINE__);
 	dev->online = 0;
 	dev->error = 1;
-
-	mdelay(80);
 
 	usb_ep_disable(dev->int_in);
 	dev->int_in->driver_data = NULL;
@@ -1501,7 +1516,7 @@ static int mtp_ctrlrequest(struct usb_composite_dev *cdev,
 			}
 			return value;
 		}
-		printk(KERN_DEBUG "mtp_ctrlrequest "\
+		printk(KERN_DEBUG "mtp_ctrlrequest "
 				"%02x.%02x v%04x i%04x l%u\n",
 				ctrl->bRequestType, ctrl->bRequest,
 				w_value, w_index, w_length);

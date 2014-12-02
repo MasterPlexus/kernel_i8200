@@ -16,6 +16,7 @@
 *    along with this program; if not write to the Free Software
 *    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 *
+*
 *****************************************************************************/
 
 
@@ -26,10 +27,12 @@
 
 #if gcdENABLE_VG
 #include "gc_hal_kernel_hardware_vg.h"
+
 #endif
 
 #ifdef __cplusplus
 extern "C" {
+
 #endif
 
 /* gckHARDWARE object. */
@@ -87,18 +90,23 @@ struct _gckHARDWARE
     gctUINT32                   powerOffTime;
     gctUINT32                   powerOffTimeout;
     gctPOINTER                  powerOffTimer;
+
 #endif
 
 #if gcdENABLE_FSCALE_VAL_ADJUST
     gctUINT32                   powerOnFscaleVal;
+
 #endif
     gctPOINTER                  pageTableDirty;
+    gctPOINTER                  IsrClkoff;
 #if MRVL_CONFIG_ENABLE_GPUFREQ
     struct gcsDEVOBJECT         devObj;
+
 #endif
 
 #if gcdLINK_QUEUE_SIZE
     struct _gckLINKQUEUE        linkQueue;
+
 #endif
     gctUINT32                   outstandingRequest;
     gctUINT32                   outstandingLimitation;
@@ -125,6 +133,8 @@ gckHARDWARE_GetFrameInfo(
 
 #ifdef __cplusplus
 }
+
 #endif
+
 
 #endif /* __gc_hal_kernel_hardware_h_ */

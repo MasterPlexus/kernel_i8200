@@ -79,6 +79,7 @@ static int      tcs_cnt;
 static int hscd_i2c_readm(u8 *rxData, int length)
 {
 	int err;
+	int tries = 0;
 
 	struct i2c_msg msgs[] = {
 		{
@@ -98,8 +99,7 @@ static int hscd_i2c_readm(u8 *rxData, int length)
 	err = i2c_transfer(this_client->adapter, msgs, 2);
 
 	if (err != 2) {
-		dev_err(&this_client->adapter->dev,
-			"read transfer error %d\n", err);
+		dev_err(&this_client->adapter->dev, "read transfer error %d\n", err);
 		err = -EIO;
 	} else {
 		err = 0;
@@ -111,7 +111,7 @@ static int hscd_i2c_readm(u8 *rxData, int length)
 static int hscd_i2c_writem(u8 *txData, int length)
 {
 	int err;
-
+	int tries = 0;
 #ifdef ALPS_DEBUG
 	int i;
 #endif
@@ -135,8 +135,7 @@ static int hscd_i2c_writem(u8 *txData, int length)
 	err = i2c_transfer(this_client->adapter, msg, 1);
 
 	if (err != 1) {
-		dev_err(&this_client->adapter->dev,
-			"write transfer error %d\n", err);
+		dev_err(&this_client->adapter->dev, "write transfer error %d\n", err);
 		err = -EIO;
 	} else {
 		err = 0;
@@ -163,9 +162,6 @@ int hscd_self_test_A(void)
 
 	alps_info("is called\n");
 
-	if (this_client == NULL)
-		return -1;
-
 	/* Control register1 backup  */
 	cr1[0] = HSCD_CTRL1;
 	if (hscd_i2c_readm(cr1, 1))
@@ -174,7 +170,7 @@ int hscd_self_test_A(void)
 	else
 		alps_dbgmsg("Control resister1 value, %02X\n", cr1[0]);
 #endif
-	usleep_range(1000, 1100);
+	mdelay(1);
 
 	/* Move active Mode (force state) */
 	sx[0] = HSCD_CTRL1;
@@ -186,7 +182,7 @@ int hscd_self_test_A(void)
 	sx[0] = HSCD_STB;
 	hscd_i2c_readm(sx, 1);
 
-	usleep_range(1000, 1100);
+	mdelay(1);
 
 	sx[0] = HSCD_STB;
 	if (hscd_i2c_readm(sx, 1))
@@ -196,8 +192,7 @@ int hscd_self_test_A(void)
 		alps_dbgmsg("Self test A register value, %02X\n", sx[0]);
 #endif
 	if (sx[0] != 0x55) {
-		alps_errmsg("Err! self-test-A, initial value is %02X\n",
-				sx[0]);
+		alps_errmsg("Err! self-test-A, initial value is %02X\n", sx[0]);
 		return 2;
 	}
 
@@ -206,7 +201,7 @@ int hscd_self_test_A(void)
 	sx[1] = 0x10;
 	if (hscd_i2c_writem(sx, 2))
 		return 1;
-	usleep_range(3000, 4000);
+	mdelay(3);
 
 	/* Get 1st value of self-test-A register */
 	sx[0] = HSCD_STB;
@@ -220,7 +215,7 @@ int hscd_self_test_A(void)
 		alps_errmsg("Err! self-test, 1st value is %02X\n", sx[0]);
 		return 3;
 	}
-	usleep_range(3000, 4000);
+	mdelay(3);
 
 	/* Get 2nd value of self-test register */
 	sx[0] = HSCD_STB;
@@ -299,8 +294,8 @@ static int hscd_force_setup(void)
 
 static void hscd_convert_magnetic_field_data(int *src, int *dest)
 {
-#if 0
 	int axis[3];
+#if 0
 	axis[0] = src[0];
 	axis[1] = src[1];
 	axis[2] = src[2];
@@ -323,9 +318,6 @@ int hscd_get_magnetic_field_data(int *xyz)
 	int axis[3];
 
 	if (atomic_read(&flagSuspend) == 1)
-		return err;
-
-	if (this_client == NULL)
 		return err;
 
 	sx[0] = HSCD_XOUT;
@@ -379,7 +371,7 @@ void hscd_activate(int flagatm, int flag, int dtime)
 		buf[0] = HSCD_CTRL4;	/* 15 bit signed value */
 		buf[1] = 0x90;
 		hscd_i2c_writem(buf, 2);
-		usleep_range(1000, 1100);
+		mdelay(1);
 
 		tcs_cnt = tcs_cnt * atomic_read(&delay) / dtime;
 		tcs_thr = HSCD_TCS_TIME / dtime;
@@ -394,7 +386,7 @@ void hscd_activate(int flagatm, int flag, int dtime)
 		buf[0] = HSCD_CTRL1;
 		buf[1] = 0x8A;
 		hscd_i2c_writem(buf, 2);
-		usleep_range(1000, 1100);
+		mdelay(1);
 		hscd_tcs_setup();
 		hscd_force_setup();
 	}
@@ -416,7 +408,7 @@ static void hscd_register_init(void)
 	buf[1] = 0x80;
 	hscd_i2c_writem(buf, 2);
 
-	usleep_range(5000, 6000);
+	mdelay(5);
 
 	atomic_set(&delay, 100);
 	hscd_activate(0, 1, atomic_read(&delay));
@@ -584,11 +576,9 @@ static int hscd_probe(struct i2c_client *client,
 		ret = 0;
 	else {
 		if (ret < 0)
-			pr_err("%s : i2c for reading chip id failed\n",
-				__func__);
+			alps_errmsg("i2c for reading chip id failed\n");
 		else {
-			pr_err("%s : Device identification failed\n",
-				__func__);
+			alps_errmsg("Device identification failed\n");
 			ret = -ENODEV;
 		}
 		goto exit;
@@ -644,9 +634,7 @@ static int hscd_resume(struct i2c_client *client)
 
 	atomic_set(&flagSuspend, 0);
 	if (atomic_read(&flag_enable))
-		hscd_activate(0,
-			atomic_read(&flag_enable),
-			atomic_read(&delay));
+		hscd_activate(0, atomic_read(&flag_enable), atomic_read(&delay));
 
 	return 0;
 }
@@ -654,6 +642,7 @@ static int hscd_resume(struct i2c_client *client)
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void hscd_early_suspend(struct early_suspend *handler)
 {
+
 	alps_info("is called\n");
 
 	hscd_suspend(this_client, PMSG_SUSPEND);

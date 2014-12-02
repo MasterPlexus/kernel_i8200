@@ -280,7 +280,7 @@ static int process_ep_req(struct mv_udc *udc, int index,
  * @status : request status to be set, only works when
  * request is still in progress.
  */
-static void done(struct mv_ep *ep, struct mv_req *req, int status)
+static int done(struct mv_ep *ep, struct mv_req *req, int status)
 {
 	struct mv_udc *udc = NULL;
 	unsigned char stopped = ep->stopped;
@@ -336,6 +336,11 @@ static void done(struct mv_ep *ep, struct mv_req *req, int status)
 
 	spin_lock(&ep->udc->lock);
 	ep->stopped = stopped;
+
+	if (udc->active)
+		return 0;
+	else
+		return -ESHUTDOWN;
 }
 
 static int queue_dtd(struct mv_ep *ep, struct mv_req *req)
@@ -447,7 +452,7 @@ static struct mv_dtd *build_dtd(struct mv_req *req, unsigned *length,
 	if (!req->ep->desc) {
 		printk("build_dtd: %s (%d) desc is NULL\n", req->ep->name, req->ep->stopped);
 		/* if desc is NULL, mean ep is not enabled, return */
-	    return NULL;
+	    return NULL;   	
 
 	}
 	if ((req->ep->desc->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK)
@@ -576,6 +581,13 @@ static int mv_ep_enable(struct usb_ep *_ep,
 
 	bit_pos = 1 << ((direction == EP_DIR_OUT ? 0 : 16) + ep->ep_num);
 
+	spin_lock_irqsave(&udc->lock, flags);
+
+	if (!udc->active) {
+		spin_unlock_irqrestore(&udc->lock, flags);
+		return -ESHUTDOWN;
+	}
+
 	/* Check if the Endpoint is Primed */
 	if ((readl(&udc->op_regs->epprime) & bit_pos)
 		|| (readl(&udc->op_regs->epstatus) & bit_pos)) {
@@ -611,7 +623,6 @@ static int mv_ep_enable(struct usb_ep *_ep,
 		goto en_done;
 	}
 
-	spin_lock_irqsave(&udc->lock, flags);
 	/* Get the endpoint queue head address */
 	dqh = ep->dqh;
 	dqh->max_packet_length = (max << EP_QUEUE_HEAD_MAX_PKT_LEN_POS)
@@ -855,7 +866,7 @@ mv_ep_queue(struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
 
 	spin_lock_irqsave(&udc->lock, flags);
 
-	if (!ep->desc) {
+	if (!udc->active || !ep->desc) {
 		spin_unlock_irqrestore(&udc->lock, flags);
 		dev_info(&udc->dev->dev,
 			"%s is already disabled!\n", ep->name);
@@ -943,20 +954,11 @@ static int mv_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	if (!_ep || !_req)
 		return -EINVAL;
 
-	if (!udc->active)
+	spin_lock_irqsave(&udc->lock, flags);
+	if (!udc->active) {
+		spin_unlock_irqrestore(&udc->lock, flags);
 		return 0;
-
-	spin_lock_irqsave(&ep->udc->lock, flags);
-	stopped = ep->stopped;
-
-	/* Stop the ep before we deal with the queue */
-	ep->stopped = 1;
-	epctrlx = readl(&udc->op_regs->epctrlx[ep->ep_num]);
-	if (ep_dir(ep) == EP_DIR_IN)
-		epctrlx &= ~EPCTRL_TX_ENABLE;
-	else
-		epctrlx &= ~EPCTRL_RX_ENABLE;
-	writel(epctrlx, &udc->op_regs->epctrlx[ep->ep_num]);
+	}
 
 	/* make sure it's actually queued on this endpoint */
 	list_for_each_entry(req, &ep->queue, queue) {
@@ -967,6 +969,17 @@ static int mv_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 		ret = -EINVAL;
 		goto out;
 	}
+
+	stopped = ep->stopped;
+
+	/* Stop the ep before we deal with the queue */
+	ep->stopped = 1;
+	epctrlx = readl(&udc->op_regs->epctrlx[ep->ep_num]);
+	if (ep_dir(ep) == EP_DIR_IN)
+		epctrlx &= ~EPCTRL_TX_ENABLE;
+	else
+		epctrlx &= ~EPCTRL_RX_ENABLE;
+	writel(epctrlx, &udc->op_regs->epctrlx[ep->ep_num]);
 
 	/* The request is in progress, or completed but not dequeued */
 	if (ep->queue.next == &req->queue) {
@@ -1000,10 +1013,10 @@ static int mv_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 
 	}
 
-	done(ep, req, -ECONNRESET);
+	if (ret = done(ep, req, -ECONNRESET))
+		goto out;
 
 	/* Enable EP */
-out:
 	epctrlx = readl(&udc->op_regs->epctrlx[ep->ep_num]);
 	if (ep_dir(ep) == EP_DIR_IN)
 		epctrlx |= EPCTRL_TX_ENABLE;
@@ -1012,7 +1025,8 @@ out:
 	writel(epctrlx, &udc->op_regs->epctrlx[ep->ep_num]);
 	ep->stopped = stopped;
 
-	spin_unlock_irqrestore(&ep->udc->lock, flags);
+out:
+	spin_unlock_irqrestore(&udc->lock, flags);
 	return ret;
 }
 
@@ -1829,9 +1843,7 @@ static void ch9clearfeature(struct mv_udc *udc, struct usb_ctrlrequest *setup)
 			ep = &udc->eps[ep_num * 2 + direction];
 			if (ep->wedge == 1)
 				break;
-			spin_unlock(&udc->lock);
 			ep_set_stall(udc, ep_num, direction, 0);
-			spin_lock(&udc->lock);
 			break;
 		default:
 			goto out;
@@ -1881,9 +1893,7 @@ static void ch9setfeature(struct mv_udc *udc, struct usb_ctrlrequest *setup)
 			if (setup->wValue != 0 || setup->wLength != 0
 				|| ep_num > udc->max_eps)
 				goto out;
-			spin_unlock(&udc->lock);
 			ep_set_stall(udc, ep_num, direction, 1);
-			spin_lock(&udc->lock);
 			break;
 		default:
 			goto out;
@@ -1942,6 +1952,7 @@ static void handle_setup_packet(struct mv_udc *udc, u8 ep_num,
 	struct usb_ctrlrequest *setup)
 {
 	bool delegate = false;
+	int ret;
 
 	nuke(&udc->eps[ep_num * 2 + EP_DIR_OUT], -ESHUTDOWN);
 
@@ -1983,20 +1994,28 @@ static void handle_setup_packet(struct mv_udc *udc, u8 ep_num,
 			udc->ep0_dir = (setup->bRequestType & USB_DIR_IN)
 					?  EP_DIR_IN : EP_DIR_OUT;
 			spin_unlock(&udc->lock);
-			if (udc->driver->setup(&udc->gadget,
-				&udc->local_setup_buff) < 0)
-				ep0_stall(udc);
+			ret = udc->driver->setup(&udc->gadget,
+						&udc->local_setup_buff);
 			spin_lock(&udc->lock);
+			if (!udc->active)
+				return;
+			if (ret < 0)
+				ep0_stall(udc);
+
 			udc->ep0_state = (setup->bRequestType & USB_DIR_IN)
 					?  DATA_STATE_XMIT : DATA_STATE_RECV;
 		} else {
 			/* no DATA phase, IN STATUS phase from gadget */
 			udc->ep0_dir = EP_DIR_IN;
 			spin_unlock(&udc->lock);
-			if (udc->driver->setup(&udc->gadget,
-				&udc->local_setup_buff) < 0)
-				ep0_stall(udc);
+			ret = udc->driver->setup(&udc->gadget,
+					&udc->local_setup_buff);
 			spin_lock(&udc->lock);
+			if (!udc->active)
+				return;
+			if (ret < 0)
+				ep0_stall(udc);
+
 			udc->ep0_state = WAIT_FOR_OUT_STATUS;
 		}
 
@@ -2010,10 +2029,11 @@ static void handle_setup_packet(struct mv_udc *udc, u8 ep_num,
 }
 
 /* complete DATA or STATUS phase of ep0 prime status phase if needed */
-static void ep0_req_complete(struct mv_udc *udc,
+static int  ep0_req_complete(struct mv_udc *udc,
 	struct mv_ep *ep0, struct mv_req *req)
 {
 	u32 new_addr;
+	int ret;
 
 	if (udc->usb_state == USB_STATE_ADDRESS) {
 		/* set the new address */
@@ -2022,7 +2042,8 @@ static void ep0_req_complete(struct mv_udc *udc,
 			&udc->op_regs->deviceaddr);
 	}
 
-	done(ep0, req, 0);
+	if (ret = done(ep0, req, 0))
+		return ret;
 
 	switch (udc->ep0_state) {
 	case DATA_STATE_XMIT:
@@ -2099,6 +2120,9 @@ static void irq_process_tr_complete(struct mv_udc *udc)
 		}
 	}
 
+	if (!udc->active)
+		return;
+
 	/* Don't clear the endpoint setup status register here.
 	 * It is cleared as a setup packet is read out of the buffer
 	 */
@@ -2136,10 +2160,12 @@ static void irq_process_tr_complete(struct mv_udc *udc)
 
 			/* ep0 request completion */
 			if (ep_num == 0) {
-				ep0_req_complete(udc, curr_ep, curr_req);
+				if (ep0_req_complete(udc, curr_ep, curr_req))
+					return;
 				break;
 			} else {
-				done(curr_ep, curr_req, status);
+				if (done(curr_ep, curr_req, status))
+					return;
 			}
 		}
 	}
@@ -2292,11 +2318,13 @@ static irqreturn_t mv_udc_irq(int irq, void *dev)
 	struct mv_udc *udc = (struct mv_udc *)dev;
 	u32 status, intr;
 
-	/* Disable ISR when stopped bit is set */
-	if (udc->stopped)
-		return IRQ_NONE;
-
 	spin_lock(&udc->lock);
+
+	/* Disable ISR when stopped bit is set */
+	if (udc->stopped) {
+		spin_unlock(&udc->lock);
+		return IRQ_NONE;
+	}
 
 	status = readl(&udc->op_regs->usbsts);
 	intr = readl(&udc->op_regs->usbintr);
@@ -2319,11 +2347,11 @@ static irqreturn_t mv_udc_irq(int irq, void *dev)
 	if (status & USBSTS_PORT_CHANGE)
 		irq_process_port_change(udc);
 
-	if (status & USBSTS_INT)
-		irq_process_tr_complete(udc);
-
 	if (status & USBSTS_SUSPEND)
 		irq_process_suspend(udc);
+
+	if (status & USBSTS_INT)
+		irq_process_tr_complete(udc);
 
 	spin_unlock(&udc->lock);
 

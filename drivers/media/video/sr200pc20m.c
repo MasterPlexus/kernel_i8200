@@ -605,7 +605,6 @@ static int sr200pc20m_regs_table_write(struct i2c_client *c, char *name)
 static int sr200pc20m_detect(struct i2c_client *client)
 {
 	unsigned char ID = 0xFFFF;
-	int rc = 0;
 
 	printk("-----------sr200pc20m_detect------client->addr:0x%x------\n", client->addr);
 	
@@ -625,13 +624,6 @@ static int sr200pc20m_detect(struct i2c_client *client)
 		printk(SR200PC20M_MOD_NAME"-------------------------------------------------\n");
 		return -EINVAL;
 	}	
-	if (camera_antibanding_get() == 3) { /* CAM_BANDFILTER_60HZ  = 3 */
-		rc = sr200pc20m_check_table_size_for_60hz();
-		if(rc != 0) {
-			printk(KERN_ERR "%s: Fail - the table num is %d \n", __func__, rc);
-		}
-		sr200pc20m_copy_files_for_60hz();
-	}
 	return 0;
 }
 
@@ -645,7 +637,16 @@ static int sr200pc20m_init(struct v4l2_subdev *sd, u32 val)
 	struct i2c_client *c = v4l2_get_subdevdata(sd);
 	struct sr200pc20m_sensor *sensor = &sr200pc20m;
 	int result =0;
-	
+	int rc = 0;
+
+	if (camera_antibanding_get() == 3) { /* CAM_BANDFILTER_60HZ  = 3 */
+		rc = sr200pc20m_check_table_size_for_60hz();
+		if(rc != 0) {
+			printk(KERN_ERR "%s: Fail - the table num is %d \n", __func__, rc);
+		}
+		sr200pc20m_copy_files_for_60hz();
+	}
+
 #ifdef CONFIG_LOAD_FILE
 	result = sr200pc20m_regs_table_init();
 	if (result > 0)
@@ -1539,7 +1540,7 @@ static int sr200pc20m_q_fps(struct i2c_client *client, __s32 *value)
 	return 0;
 }
 
-static int sr200pc20m_ESD_check(struct i2c_client *client, __s32 *value)
+static int sr200pc20m_ESD_check(struct i2c_client *client, struct v4l2_control *ctrl)
 {	
 	u16 esd_value1 = 0;
 	u16 esd_value2 = 0;
@@ -1553,10 +1554,10 @@ static int sr200pc20m_ESD_check(struct i2c_client *client, __s32 *value)
 	
 	if(esd_value1 == 0xaa && esd_value2 == 0xaa && esd_value3 == 0xaa){
 		Cam_Printk(KERN_ERR "sr200pc20m_ESD_check() : Camera state ESD_NONE\n");
-		*value = ESD_NONE;
+		ctrl->value = ESD_NONE;
 	} else {
 		Cam_Printk(KERN_ERR "sr200pc20m_ESD_check() : esd_value1 = %x, esd_value2 = %x\n", esd_value1, esd_value2);
-		*value = ESD_ERROR;
+		ctrl->value = ESD_ERROR;
 	}
 	
 	return 0;

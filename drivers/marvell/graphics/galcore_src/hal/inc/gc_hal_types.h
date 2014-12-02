@@ -1004,6 +1004,23 @@ struct _gckLINKQUEUE
     gctUINT32                   count;
 };
 #endif
+#define gcdENTRY_QUEUE_SIZE 256
+typedef struct _gckENTRYDATA * gckENTRYDATA;
+struct _gckENTRYDATA
+{
+    gctUINT32                   physical;
+    gctUINT32                   bytes;
+};
+
+typedef struct _gckENTRYQUEUE * gckENTRYQUEUE;
+struct _gckENTRYQUEUE
+{
+    struct _gckENTRYDATA        data[gcdENTRY_QUEUE_SIZE];
+    gctUINT32                   rear;
+    gctUINT32                   front;
+    gctUINT32                   count;
+    gctBOOL                     init;
+};
 
 #ifdef __cplusplus
 }

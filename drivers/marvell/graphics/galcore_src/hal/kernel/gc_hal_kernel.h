@@ -547,6 +547,7 @@ struct _gckCOMMAND
     gctUINT                     hintArraySize;
     gctUINT32_PTR               hintArray;
 #endif
+    struct _gckENTRYQUEUE       queue;
 };
 
 typedef struct _gcsEVENT *      gcsEVENT_PTR;
@@ -625,7 +626,11 @@ struct _gckEVENT
     gctPOINTER                  eventQueueMutex;
 
     /* Array of event queues. */
+#if gcdFLUSH_FIX
+    gcsEVENT_QUEUE              queues[29];
+#else
     gcsEVENT_QUEUE              queues[30];
+#endif
     gctUINT8                    lastID;
     gctPOINTER                  freeAtom;
 
@@ -652,6 +657,7 @@ struct _gckEVENT
 
     /* Spinlock for pending event. */
     gcsSPINLOCK                 pendingLock;
+    gcsSPINLOCK                 entryQLock;
 
     gctPOINTER                  debugSignal;
 };
@@ -722,6 +728,8 @@ typedef union _gcuVIDMEM_NODE
 #if gcdDYNAMIC_MAP_RESERVED_MEMORY && gcdENABLE_VG
         gctPOINTER              kernelVirtual;
 #endif
+        /* Surface type. */
+        gceSURF_TYPE            type;
         gctUINT                 magic;
 
         /* Name and line of the calling function */
@@ -787,6 +795,8 @@ typedef union _gcuVIDMEM_NODE
 
         /* */
         gcsVIDMEM_NODE_SHARED_INFO sharedInfo;
+        /* Surface type. */
+        gceSURF_TYPE            type;
 
         /* Surface type. */
         gceSURF_TYPE            surfType;
@@ -965,6 +975,35 @@ gckLINKQUEUE_GetData(
     IN gckLINKQUEUE LinkQueue,
     IN gctUINT32 Index,
     OUT gckLINKDATA * Data
+    );
+#endif
+
+#if gcdFLUSH_FIX
+void
+gckENTRYQUEUE_Enqueue(
+    IN gckEVENT Event,
+    IN gckENTRYQUEUE Queue,
+    IN gctUINT32 physical,
+    IN gctUINT32 bytes
+    );
+
+void
+gckENTRYQUEUE_GetData(
+    IN gckENTRYQUEUE Queue,
+    IN gctUINT32 Index,
+    OUT gckENTRYDATA * Data
+    );
+
+gctUINT32
+gckENTRYQUEUE_Qurey(
+    IN gckEVENT Event,
+    IN gckENTRYQUEUE Queue
+    );
+
+void
+gckENTRYQUEUE_Dequeue(
+    IN gckEVENT Event,
+    IN gckENTRYQUEUE Queue
     );
 #endif
 

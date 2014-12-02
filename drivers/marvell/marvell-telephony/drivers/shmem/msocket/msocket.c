@@ -56,7 +56,11 @@ typedef enum
 {
 	Sensor_ON_CS,
 	Sensor_ON_PS,
+	Sensor_ON_RB_TEST,
 	Sensor_ON_CS_PS,
+	Sensor_ON_CS_RB_TEST,
+	Sensor_ON_PS_RB_TEST,
+	Sensor_ON_CS_PS_RB_TEST,
 	Sensor_OFF
 } SensorStatus;
 
@@ -1054,7 +1058,9 @@ static int px_suspend_notifier_event(struct notifier_block *this,
 	switch (event) {
 	case PM_SUSPEND_PREPARE:
 		printk("MSOCK: gCpPowerMode:%d,gSensorStatus:%d\n", gCpPowerMode, gSensorStatus);
-		if (gCpPowerMode == 1 && (gSensorStatus != Sensor_ON_CS && gSensorStatus != Sensor_ON_CS_PS)) {
+		if (gCpPowerMode == 1 && (gSensorStatus != Sensor_ON_CS && gSensorStatus != Sensor_ON_CS_PS
+			 && gSensorStatus != Sensor_ON_RB_TEST && gSensorStatus != Sensor_ON_PS_RB_TEST
+			 && gSensorStatus != Sensor_ON_CS_RB_TEST && gSensorStatus != Sensor_ON_CS_PS_RB_TEST)) {
 			__pm_wakeup_event(&cp_power_resume_wakeup, 1000 * 5);
 			portq_send_msg(CISTUB_PORT, MsocketSuspendNotify);
 		}

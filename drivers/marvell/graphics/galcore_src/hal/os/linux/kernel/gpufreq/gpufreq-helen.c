@@ -233,27 +233,26 @@ static int helen_gpufreq_target (struct gpufreq_policy *policy, unsigned int tar
     struct gpufreq_frequency_table *freq_table = gh[gpu].freq_table;
 
 #if MRVL_CONFIG_ENABLE_QOS_SUPPORT
- {
-	 unsigned int qos_min = (unsigned int)pm_qos_request(gc_qos[gpu].pm_qos_class_min);
-	 unsigned int qos_max = (unsigned int)pm_qos_request(gc_qos[gpu].pm_qos_class_max);
+    {
+        unsigned int qos_min = (unsigned int)pm_qos_request(gc_qos[gpu].pm_qos_class_min);
+        unsigned int qos_max = (unsigned int)pm_qos_request(gc_qos[gpu].pm_qos_class_max);
 
-	 pr_debug("[%d] target %d | policy [%d, %d] | Qos [%d, %d]\n",
-			 gpu, target_freq, policy->min, policy->max, qos_min, qos_max);
+        pr_debug("[%d] target %d | policy [%d, %d] | Qos [%d, %d]\n",
+                gpu, target_freq, policy->min, policy->max, qos_min, qos_max);
 
-	 /*
-	   - policy max and qos max has higher priority than policy min and qos min
-	   - policy min and qos min has no priority order, so are policy max and qos max
-	 */
-	 target_freq = max(policy->min, target_freq);
-	 target_freq = max(qos_min, target_freq);
-	 target_freq = min(policy->max, target_freq);
-	 target_freq = min(qos_max, target_freq);
+        /*
+          - policy max and qos max has higher priority than policy min and qos min
+          - policy min and qos min has no priority order, so are policy max and qos max
+        */
+        target_freq = max(policy->min, target_freq);
+        target_freq = max(qos_min, target_freq);
+        target_freq = min(policy->max, target_freq);
+        target_freq = min(qos_max, target_freq);
 
-	 /* seek a target_freq <= min_value_of(policy->max, qos_max) */
-	 if((target_freq == policy->max) || (target_freq == qos_max))
-		 relation = GPUFREQ_RELATION_H;
- }
-
+        /* seek a target_freq <= min_value_of(policy->max, qos_max) */
+        if((target_freq == policy->max) || (target_freq == qos_max))
+            relation = GPUFREQ_RELATION_H;
+    }
 #endif
 
     /* find a nearest freq in freq_table for target_freq */
@@ -282,7 +281,6 @@ static int helen_gpufreq_target (struct gpufreq_policy *policy, unsigned int tar
     gpufreq_notify_transition(&freqs, GPUFREQ_PRECHANGE);
 
     ret = clk_set_rate(gc_clk, KHZ_TO_HZ(freqs.new_freq));
-
     if(ret)
     {
         debug_log(GPUFREQ_LOG_WARNING, "[%d] failed to set target rate %u to clk %p\n",

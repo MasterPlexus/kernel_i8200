@@ -43,25 +43,44 @@
 #include <linux/input/bt532_ts.h>
 #include <linux/input/mt.h>
 
-#ifdef CONFIG_MACH_DEGAS
+#if defined(CONFIG_MACH_DEGAS)
 #include "zinitix_touch_bt532_firmware_DEGAS.h"
-#else // #ifdef  CONFIG_MACH_GOYA
+#define NOT_SUPPORTED_TOUCH_DUMMY_KEY
+#define SUPPORTED_PALM_TOUCH
+#elif defined(CONFIG_MACH_GOYA) // TSP ITO vs Meltal Mesh
+#include <mach/mfp-pxa986-goya.h>
+#include "zinitix_touch_bt532_mm_firmware.h"
+#include "zinitix_touch_bt532_ito_firmware.h"
+#define TSP_ID_CHECK90 mfp_to_gpio(GPIO090_GPIO_90)
+#define TSP_ID_CHECK91 mfp_to_gpio(GPIO091_GPIO_91)
+u8* m_firmware_data;
+#else
 #include "zinitix_touch_bt532_firmware.h"
 #endif
 
-
+extern char *saved_command_line;
+static void bt532_firmware_check(void);
 #define ZINITIX_TSP_USE_LDO_POWER                  1
 #define ZINITIX_DEBUG				0
 
 /* added header file */
 
+#ifdef SUPPORTED_PALM_TOUCH
+#define TOUCH_POINT_MODE			2
+#else
 #define TOUCH_POINT_MODE			0
+#endif
 
 #define MAX_SUPPORTED_FINGER_NUM	5 /* max 10 */
 
 #ifdef SUPPORTED_TOUCH_KEY
+#ifdef NOT_SUPPORTED_TOUCH_DUMMY_KEY
+#define MAX_SUPPORTED_BUTTON_NUM	2 /* max 8 */
+#define SUPPORTED_BUTTON_NUM		2
+#else
 #define MAX_SUPPORTED_BUTTON_NUM	6 /* max 8 */
 #define SUPPORTED_BUTTON_NUM		4
+#endif
 #endif
 
 /* Upgrade Method*/
@@ -74,11 +93,11 @@ name = "zinitix_isp" , addr 0x50*/
 
 #define TOUCH_FORCE_UPGRADE			1
 #define USE_CHECKSUM				1
-#define CHECK_HWID					0
+#define CHECK_HWID					1
 
 #define CHIP_OFF_DELAY				50 /*ms*/
 #define CHIP_ON_DELAY				15 /*ms*/
-#define FIRMWARE_ON_DELAY			20 /*ms*/
+#define FIRMWARE_ON_DELAY			40 /*ms*/
 
 #define DELAY_FOR_SIGNAL_DELAY		30 /*us*/
 #define DELAY_FOR_TRANSCATION		50
@@ -517,10 +536,42 @@ struct bt532_ts_info {
 #define KEY_DUMMY_HOME	252
 #define KEY_DUMMY_BACK	253
 /*<= you must set key button mapping*/
+#ifdef NOT_SUPPORTED_TOUCH_DUMMY_KEY
+u32 BUTTON_MAPPING_KEY[MAX_SUPPORTED_BUTTON_NUM] = {
+	KEY_MENU,KEY_BACK};
+#else
 u32 BUTTON_MAPPING_KEY[MAX_SUPPORTED_BUTTON_NUM] = {
 	KEY_DUMMY_MENU, KEY_MENU,// KEY_DUMMY_HOME1,
 	/*KEY_DUMMY_HOME2,*/ KEY_BACK, KEY_DUMMY_BACK};
+#endif
 
+static void bt532_firmware_check(void)
+{
+#ifdef CONFIG_MACH_GOYA
+	u8 ret;
+	ret = gpio_request(TSP_ID_CHECK90, "TSP_ID_CHECK1");
+	if (ret < 0) {
+		pr_err("%s: Request GPIO failed, gpio %d (%d)\n", BT532_TS_DEVICE,
+			TSP_ID_CHECK90, ret);
+		return;
+	}
+	ret = gpio_request(TSP_ID_CHECK91, "TSP_ID_CHECK2");
+	if (ret < 0) {
+		pr_err("%s: Request GPIO failed, gpio %d (%d)\n", BT532_TS_DEVICE,
+			TSP_ID_CHECK91, ret);
+		return;
+	}
+	gpio_direction_input(TSP_ID_CHECK90);
+	gpio_direction_input(TSP_ID_CHECK91);
+	printk("gpio_get_value(TSP_ID_1)=%d, gpio_get_value(TSP_ID_2)=%d\n",gpio_get_value(TSP_ID_CHECK90),gpio_get_value(TSP_ID_CHECK91));
+	if(!(gpio_get_value(TSP_ID_CHECK90) || gpio_get_value(TSP_ID_CHECK91)))
+		m_firmware_data = m_firmware_data_mm;
+	else
+		m_firmware_data = m_firmware_data_ito;
+#else
+	return;
+#endif
+}
 /* define i2c sub functions*/
 static inline s32 read_data(struct i2c_client *client,
 	u16 reg, u8 *values, u16 length)
@@ -1088,7 +1139,7 @@ static bool ts_check_need_upgrade(struct bt532_ts_info *info,
 	zinitix_printk("cur HW_ID = 0x%x, new HW_ID = 0x%x\n",
 		cur_hw_id, new_hw_id);
 	if (cur_hw_id != new_hw_id)
-		return false;
+		return true;
 #endif
 
 	zinitix_printk("cur version = 0x%x, new version = 0x%x\n",
@@ -1360,7 +1411,10 @@ static bool init_touch(struct bt532_ts_info *info)
 	u8 checksum_err;
 #endif
 	int retry_cnt = 0;
+	char* productionMode = "androidboot.bsp=2";
+	char* checkMode = NULL;
 
+	checkMode = strstr(saved_command_line, productionMode);
 retry_init:
 	for(i = 0; i < INIT_RETRY_CNT; i++) {
 		if (read_data(client, BT532_EEPROM_INFO_REG,
@@ -1515,9 +1569,9 @@ retry_init:
 		goto fail_init;
 
 #if TOUCH_ONESHOT_UPGRADE
-	if (ts_check_need_upgrade(info, cap->fw_version,
+	if ((checkMode == NULL) &&(ts_check_need_upgrade(info, cap->fw_version,
 								cap->fw_minor_version, cap->reg_data_version,
-								cap->hw_id) == true) {
+								cap->hw_id) == true)) {
 		zinitix_printk("start upgrade firmware\n");
 
 		if(ts_upgrade_firmware(info, m_firmware_data,
@@ -1645,11 +1699,15 @@ fail_init:
 
 		zinitix_debug_msg("retry to initiallize(retry cnt = %d)\r\n", retry_cnt);
 #if TOUCH_FORCE_UPGRADE
-		if (ts_upgrade_firmware(info, m_firmware_data,
-			cap->ic_fw_size) == false) {
-			zinitix_printk("upgrade failed\n");
-			return false;
+		if(checkMode == NULL) {
+			if (ts_upgrade_firmware(info, m_firmware_data,
+				cap->ic_fw_size) == false) {
+				zinitix_printk("upgrade failed\n");
+				return false;
+			}
 		}
+		else
+			return true;
 		mdelay(100);
 
 		// hw calibration and make checksum
@@ -1942,7 +2000,7 @@ static irqreturn_t bt532_touch_work(int irq, void *data)
 
 		goto out;
 	}
-/*
+#ifdef SUPPORTED_PALM_TOUCH
 	if (zinitix_bit_test(info->touch_info.status, BIT_PALM)) {
 		dev_info(&client->dev, "Palm report\n");
 		palm = 1;
@@ -1952,7 +2010,7 @@ static irqreturn_t bt532_touch_work(int irq, void *data)
 		dev_info(&client->dev, "Palm reject\n");
 		palm = 2;
 	}
-*/
+#endif
 	for (i = 0; i < info->cap_info.multi_fingers; i++) {
 		sub_status = info->touch_info.coord[i].sub_status;
 		prev_sub_status = info->reported_touch_info.coord[i].sub_status;
@@ -2026,10 +2084,13 @@ static irqreturn_t bt532_touch_work(int irq, void *data)
 				ABS_MT_TOUCH_MINOR, (u32)info->touch_info.coord[i].minor_width);
 //			input_report_abs(info->input_dev,
 //				ABS_MT_WIDTH_MINOR, (u32)info->touch_info.coord[i].minor_width);
-//			input_report_abs(info->input_dev,
-//				ABS_MT_ANGLE, info->touch_info.coord[i].angle - 90);
-//			zinitix_debug_msg("finger [%02d] angle = %03d\r\n", i, info->touch_info.coord[i].angle);
-//			input_report_abs(info->input_dev, ABS_MT_PALM, (palm==2)?1:0);
+#ifdef SUPPORTED_PALM_TOUCH
+			input_report_abs(info->input_dev, ABS_MT_ANGLE,
+						(palm > 1)?70:info->touch_info.coord[i].angle - 90);
+			/*dev_info(&client->dev, "finger [%02d] angle = %03d\n", i,
+						info->touch_info.coord[i].angle);*/
+			input_report_abs(info->input_dev, ABS_MT_PALM, (palm > 0)?1:0);
+#endif
 //			input_report_abs(info->input_dev, ABS_MT_PALM, 1);
 #endif
 
@@ -3309,12 +3370,20 @@ static ssize_t show_touchkey_threshold(struct device *dev,
 	struct i2c_client *client = info->client;
 	struct capa_info *cap = &(info->cap_info);
 
+#ifdef NOT_SUPPORTED_TOUCH_DUMMY_KEY
+	dev_info(&client->dev, "%s: key threshold = %d %d\n", __func__,
+			cap->key_threshold, cap->key_threshold);
+
+	return snprintf(buf, 41, "%d %d",
+					cap->key_threshold,  cap->key_threshold);
+#else
 	dev_info(&client->dev, "%s: key threshold = %d %d %d %d\n", __func__,
 			cap->dummy_threshold, cap->key_threshold, cap->key_threshold, cap->dummy_threshold);
 
 	return snprintf(buf, 41, "%d %d %d %d", cap->dummy_threshold,
 					cap->key_threshold,  cap->key_threshold,
 					cap->dummy_threshold);
+#endif
 }
 #if 0
 static ssize_t enable_dummy_key(struct device *dev,
@@ -3357,6 +3426,18 @@ static ssize_t show_touchkey_sensitivity(struct device *dev,
 	int ret;
 	int i;
 
+#ifdef NOT_SUPPORTED_TOUCH_DUMMY_KEY
+	if (!strcmp(attr->attr.name, "touchkey_menu"))
+		i = 0;
+	else if (!strcmp(attr->attr.name, "touchkey_back"))
+		i = 1;
+	else {
+		dev_err(&client->dev, "%s: Invalid attribute\n",__func__);
+
+		goto err_out;
+	}
+
+#else
 	if (!strcmp(attr->attr.name, "touchkey_dummy_btn1"))
 		i = 0;
 	else if (!strcmp(attr->attr.name, "touchkey_menu"))
@@ -3374,7 +3455,7 @@ static ssize_t show_touchkey_sensitivity(struct device *dev,
 
 		goto err_out;
 	}
-
+#endif
 	ret = read_data(client, BT532_BTN_WIDTH + i, (u8*)&val, 2);
 	if (ret < 0) {
 		dev_err(&client->dev, "%s: Failed to read %d's key sensitivity\n",
@@ -3420,16 +3501,18 @@ static ssize_t show_menu_key_idac_data(struct device *dev,
 static DEVICE_ATTR(touchkey_threshold, S_IRUGO, show_touchkey_threshold, NULL);
 /*static DEVICE_ATTR(touch_sensitivity, S_IRUGO, back_key_state_show, NULL);*/
 //static DEVICE_ATTR(extra_button_event, S_IWUSR | S_IWGRP | S_IRUGO, NULL, enable_dummy_key );
+static DEVICE_ATTR(touchkey_menu, S_IRUGO, show_touchkey_sensitivity, NULL);
+static DEVICE_ATTR(touchkey_back, S_IRUGO, show_touchkey_sensitivity, NULL);
+#ifndef NOT_SUPPORTED_TOUCH_DUMMY_KEY
 static DEVICE_ATTR(touchkey_dummy_btn1, S_IRUGO,
 					show_touchkey_sensitivity, NULL);
-static DEVICE_ATTR(touchkey_menu, S_IRUGO, show_touchkey_sensitivity, NULL);
 static DEVICE_ATTR(touchkey_dummy_btn3, S_IRUGO,
 					show_touchkey_sensitivity, NULL);
 static DEVICE_ATTR(touchkey_dummy_btn4, S_IRUGO,
 					show_touchkey_sensitivity, NULL);
-static DEVICE_ATTR(touchkey_back, S_IRUGO, show_touchkey_sensitivity, NULL);
 static DEVICE_ATTR(touchkey_dummy_btn6, S_IRUGO,
 					show_touchkey_sensitivity, NULL);
+#endif
 /*static DEVICE_ATTR(autocal_stat, S_IRUGO, show_autocal_status, NULL);*/
 static DEVICE_ATTR(touchkey_raw_back, S_IRUGO, show_back_key_raw_data, NULL);
 static DEVICE_ATTR(touchkey_raw_menu, S_IRUGO, show_menu_key_raw_data, NULL);
@@ -3443,12 +3526,14 @@ static struct attribute *touchkey_attributes[] = {
 	&dev_attr_touchkey_menu.attr,
 	//&dev_attr_autocal_stat.attr,
 	//&dev_attr_extra_button_event.attr,
-	&dev_attr_touchkey_dummy_btn1.attr,
 	&dev_attr_touchkey_raw_menu.attr,
+	&dev_attr_touchkey_raw_back.attr,
+#ifndef NOT_SUPPORTED_TOUCH_DUMMY_KEY
+	&dev_attr_touchkey_dummy_btn1.attr,
 	&dev_attr_touchkey_dummy_btn3.attr,
 	&dev_attr_touchkey_dummy_btn4.attr,
-	&dev_attr_touchkey_raw_back.attr,
 	&dev_attr_touchkey_dummy_btn6.attr,
+#endif
 	//&dev_attr_touchkey_idac_back.attr,
 	//&dev_attr_touchkey_idac_menu.attr,
 	NULL,
@@ -3946,6 +4031,8 @@ static int bt532_ts_probe(struct i2c_client *client,
 	/* init touch mode */
 	info->touch_mode = TOUCH_POINT_MODE;
 	misc_info = info;
+
+	bt532_firmware_check();
 
 	if(init_touch(info) == false) {
 		goto err_input_unregister_device;
