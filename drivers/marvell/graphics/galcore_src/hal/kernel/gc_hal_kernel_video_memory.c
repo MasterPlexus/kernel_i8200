@@ -23,7 +23,7 @@
 
 
 #include "gc_hal_kernel_precomp.h"
-
+#include <linux/kernel.h>
 #define _GC_OBJ_ZONE    gcvZONE_VIDMEM
 
 /******************************************************************************\
