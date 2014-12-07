@@ -117,12 +117,12 @@ config CPU_FREQ_DEFAULT_GOV_INTERACTIVE
 #	  Use the CPUFreq governor 'smartassV2' as default.
 
 
-config CPU_FREQ_DEFAULT_GOV_LULZACTIVE
-	bool "lulzactive"
-	select CPU_FREQ_GOV_LULZACTIVE
-	select CPU_FREQ_GOV_PERFORMANCE
-	help
-	  Use the CPUFreq governor 'lulzactive' as default.
+#config CPU_FREQ_DEFAULT_GOV_LULZACTIVE
+#	bool "lulzactive"
+#	select CPU_FREQ_GOV_LULZACTIVE
+#	select CPU_FREQ_GOV_PERFORMANCE
+#	help
+#	  Use the CPUFreq governor 'lulzactive' as default.
 
 
 endchoice
