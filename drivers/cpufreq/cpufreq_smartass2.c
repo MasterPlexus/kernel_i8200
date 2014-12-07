@@ -24,6 +24,7 @@
  *
  */
 
+#include <linux/module.h>
 #include <linux/cpu.h>
 #include <linux/cpumask.h>
 #include <linux/cpufreq.h>
