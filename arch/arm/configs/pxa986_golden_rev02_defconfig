@@ -955,8 +955,8 @@ CONFIG_RFKILL_LEDS=y
 # Near Field Communication (NFC) devices
 #
 # CONFIG_PN544_NFC is not set
-CONFIG_NFC=y
-CONFIG_NFC_PN547=y
+# CONFIG_NFC is not set
+# CONFIG_NFC_PN547 is not set
 
 #
 # Device Drivers

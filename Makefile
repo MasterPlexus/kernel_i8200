@@ -200,9 +200,12 @@ ARCH		?= arm
 #funktioniert solala
 #CROSS_COMPILE  ?=/media/dirk/daten/bin/prebuilts/gcc/linux-x86/arm/arm-eabi-4.6/bin/arm-eabi-
 #linaro 4.9 
-CROSS_COMPILE  ?=/media/dirk/compile/toolchain/4.9/android-toolchain-eabi/bin/arm-linux-androideabi-
+#CROSS_COMPILE  ?=/media/dirk/compile/toolchain/4.9/android-toolchain-eabi/bin/arm-linux-androideabi-
 # Architecture as present in compile.h
-
+#new start
+#CROSS_COMPILE  ?=/media/dirk/android/slim_new/prebuilt/linux-x86/toolchain/arm-eabi-4.4.3/bin/arm-eabi-
+# Slimsaber base
+CROSS_COMPILE  ?=/media/dirk/android/slimsaber/prebuilts/gcc/linux-x86/arm/arm-eabi-4.8/bin/arm-eabi-
 UTS_MACHINE 	:= $(ARCH)
 SRCARCH 	:= $(ARCH)
 
