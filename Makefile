@@ -205,7 +205,9 @@ ARCH		?= arm
 #new start
 #CROSS_COMPILE  ?=/media/dirk/android/slim_new/prebuilt/linux-x86/toolchain/arm-eabi-4.4.3/bin/arm-eabi-
 # Slimsaber base
-CROSS_COMPILE  ?=/media/dirk/android/slimsaber/prebuilts/gcc/linux-x86/arm/arm-eabi-4.8/bin/arm-eabi-
+#CROSS_COMPILE  ?=/media/dirk/android/slimsaber/prebuilts/gcc/linux-x86/arm/arm-eabi-4.8/bin/arm-eabi-
+#CROSS_COMPILE  ?=/media/dirk/android/slimsaber/prebuilts/gcc/linux-x86/arm/arm-eabi-4.9-cortex-a15/bin/arm-eabi-
+CROSS_COMPILE  ?=/media/dirk/android/kernel/toolchain/prebuilts/gcc/linux-x86/arm/arm-linux-eabi-UB-4.9/bin/arm-eabi-
 UTS_MACHINE 	:= $(ARCH)
 SRCARCH 	:= $(ARCH)
 
@@ -255,8 +257,8 @@ CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 
 HOSTCC       = gcc
 HOSTCXX      = g++
-HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -Wno-maybe-uninitialized
-HOSTCXXFLAGS = -O2
+HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O3 -fomit-frame-pointer -Wno-maybe-uninitialized
+HOSTCXXFLAGS = -O3
 
 # Decide whether to build built-in, modular, or both.
 # Normally, just do built-in.
@@ -356,14 +358,25 @@ CGITINFO	= scripts/cgitinfo
 PERL		= perl
 CHECK		= sparse
 
-CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
-		  -Wbitwise -Wno-return-void $(CF)
-CFLAGS_MODULE   =
-AFLAGS_MODULE   =
-LDFLAGS_MODULE  =
-CFLAGS_KERNEL	=
+KERNELFLAGS	= -mcpu=cortex-a9 -mtune=cortex-a9 -marm -march=armv7-a
+#next ty -mfpu=vfpv3
+# this addition do crash? -mfloat-abi=softfp -mfpu=neon
+MODFLAGS	= -DMODULE $(KERNELFLAGS)
+CFLAGS_MODULE   = $(MODFLAGS)
+AFLAGS_MODULE   = $(MODFLAGS)
+LDFLAGS_MODULE  = 
+CFLAGS_KERNEL	= $(KERNELFLAGS)
 AFLAGS_KERNEL	=
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
+
+#CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
+#		  -Wbitwise -Wno-return-void $(CF)
+#CFLAGS_MODULE   = 
+#AFLAGS_MODULE   =
+#LDFLAGS_MODULE  =
+#CFLAGS_KERNEL	=
+#AFLAGS_KERNEL	= 
+#CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
 
 # Use LINUXINCLUDE when you must reference the include/ directory.
@@ -574,7 +587,7 @@ all: vmlinux
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS	+= -Os
 else
-KBUILD_CFLAGS	+= -O2
+KBUILD_CFLAGS	+= -O3
 endif
 
 include $(srctree)/arch/$(SRCARCH)/Makefile
